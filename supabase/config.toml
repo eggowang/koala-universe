@@ -1,6 +1,7 @@
 project_id = "koala-universe"
 
 [auth]
+enable_signup = false
 site_url = "https://eggowang.github.io/koala-universe/"
 additional_redirect_urls = [
   "https://eggowang.github.io/koala-universe/**",
@@ -9,9 +10,9 @@ additional_redirect_urls = [
 ]
 
 [auth.email]
-enable_signup = true
+enable_signup = false
 double_confirm_changes = true
-enable_confirmations = true
+enable_confirmations = false
 secure_password_change = false
 max_frequency = "1m0s"
 otp_length = 8
