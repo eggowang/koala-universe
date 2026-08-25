@@ -519,9 +519,17 @@ async function saveDiamondRate() {
   } catch (error) { showToast(cloudErrorMessage(error)); }
   finally { button.disabled = false; }
 }
-function showToast(message) {
-  const toast = $('#toast'); toast.textContent = message; toast.classList.add('is-visible');
-  clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.remove('is-visible'), 2200);
+function showToast(message, tone = 'info') {
+  const toast = $('#toast');
+  const icons = { success: '✓', error: '!', info: 'i' };
+  toast.dataset.tone = tone;
+  $('#toastIcon').textContent = icons[tone] || icons.info;
+  $('#toastMessage').textContent = message;
+  toast.classList.remove('is-visible');
+  void toast.offsetWidth;
+  toast.classList.add('is-visible');
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => toast.classList.remove('is-visible'), 2600);
 }
 function celebrate() {
   const el = $('#celebration');
@@ -866,7 +874,11 @@ document.addEventListener('DOMContentLoaded', () => {
     setAuthMessage('#inviteResult', '正在发送邀请…');
     try {
       const result = await window.KoalaCloud.inviteParent(state.context.family_id, email);
-      setAuthMessage('#inviteResult', result.emailSent ? '邀请邮件已发送。' : '邮件未发送，可复制生成的邀请链接。', result.emailSent ? 'success' : 'error');
+      if (result.emailSent) {
+        $('#inviteParentDialog').close();
+        $('#inviteParentEmail').value = '';
+        showToast('家长邀请邮件已发送', 'success');
+      } else setAuthMessage('#inviteResult', '邮件未发送，请稍后重试。', 'error');
     } catch (error) { setAuthMessage('#inviteResult', cloudErrorMessage(error), 'error'); }
   };
   $('#childPinButton').onclick = () => {
@@ -887,7 +899,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const result = await window.KoalaCloud.createChildLogin(state.context.family_id, pin);
       $('#newChildPin').value = '';
       $('#newChildPinConfirm').value = '';
-      setAuthMessage('#childPinResult', `已保存。家庭码：${formatFamilyCode(result.familyCode)}`, 'success');
+      $('#childPinDialog').close();
+      showToast(`孩子 PIN 已保存 · 家庭码 ${formatFamilyCode(result.familyCode)}`, 'success');
     } catch (error) { setAuthMessage('#childPinResult', cloudErrorMessage(error), 'error'); }
   };
   $('#copyFamilyCodeButton').onclick = async () => {
