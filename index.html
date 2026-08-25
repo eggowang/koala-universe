@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101b3f">
+  <meta name="description" content="考拉的宇宙任务——作业与锻炼打卡 Demo">
+  <title>考拉的宇宙任务</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="app-icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="stylesheet" href="styles.css?v=5">
+</head>
+<body>
+  <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
+    <button id="skipSplash" class="splash__skip" type="button">跳过</button>
+    <div class="splash__orbit" aria-hidden="true">
+      <span class="splash__planet"></span>
+      <span class="splash__rocket">🚀</span>
+    </div>
+    <div class="koala koala--large" aria-hidden="true">
+      <span class="koala__ear koala__ear--left"></span>
+      <span class="koala__ear koala__ear--right"></span>
+      <span class="koala__helmet"></span>
+      <span class="koala__face"><i></i><i></i><b></b></span>
+      <span class="koala__body"></span>
+    </div>
+    <h1>考拉的宇宙任务</h1>
+    <p>今天也向自己的星球前进一点点</p>
+  </div>
+
+  <section id="authGate" class="auth-gate" hidden aria-labelledby="authTitle">
+    <div class="auth-card">
+      <div class="auth-card__brand"><span>🐨</span><div><strong>考拉的宇宙任务</strong><small>家庭同步登录</small></div></div>
+      <h1 id="authTitle">欢迎进入考拉的小宇宙</h1>
+      <p>家长管理任务，孩子完成打卡；两台设备会自动同步。</p>
+      <div class="segmented auth-tabs" role="tablist" aria-label="登录身份">
+        <button class="segmented__item is-active" type="button" data-auth-tab="parent">家长登录</button>
+        <button class="segmented__item" type="button" data-auth-tab="child">孩子登录</button>
+      </div>
+      <form id="parentAuthForm" class="auth-panel is-active">
+        <label id="parentNameField" class="field" hidden><span>家长称呼</span><input id="parentDisplayName" type="text" maxlength="20" placeholder="例如：考拉妈妈"></label>
+        <label class="field"><span>邮箱</span><input id="parentEmail" type="email" autocomplete="email" required placeholder="name@example.com"></label>
+        <label class="field"><span>密码</span><input id="parentPassword" type="password" minlength="8" autocomplete="current-password" required placeholder="至少 8 位"></label>
+        <p id="authMessage" class="auth-message" role="status"></p>
+        <button id="parentAuthSubmit" class="primary-button primary-button--wide" type="submit">登录</button>
+        <button id="toggleRegister" class="text-button auth-switch" type="button">第一次使用？创建家长账号</button>
+      </form>
+      <form id="childAuthForm" class="auth-panel">
+        <label class="field"><span>家庭码</span><input id="childFamilyCode" type="text" maxlength="8" autocomplete="off" required placeholder="8 位家庭码"></label>
+        <label class="field"><span>孩子 PIN</span><input id="childLoginPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" required placeholder="4 位数字"></label>
+        <p id="childAuthMessage" class="auth-message" role="status"></p>
+        <button class="primary-button primary-button--wide" type="submit">进入孩子任务</button>
+      </form>
+      <button id="useDemoMode" class="demo-link" type="button">暂时使用本机 Demo</button>
+    </div>
+  </section>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand__mark" aria-hidden="true">🐨</div>
+        <div><strong>考拉的宇宙任务</strong><span id="todayLabel"></span></div>
+      </div>
+      <div class="topbar__actions">
+        <span id="syncStatus" class="sync-pill"><i></i><b>Demo 本机</b></span>
+        <button id="installButton" class="icon-button" type="button" aria-label="添加到主屏幕" title="添加到主屏幕">＋</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="childView" class="view view--active" aria-labelledby="childTitle">
+        <div class="hero-card">
+          <div class="hero-card__copy">
+            <span class="eyebrow">今日航行日志</span>
+            <h1 id="childTitle">考拉，准备出发！</h1>
+            <p id="missionSummary">今天有 7 个任务，完成后请爸爸妈妈确认。</p>
+            <div class="hero-card__stats">
+              <div><strong id="starBalance">12</strong><span>颗星星</span></div>
+              <div><strong id="doneCount">1/7</strong><span>已确认</span></div>
+            </div>
+          </div>
+          <div class="space-scene" aria-hidden="true">
+            <span class="space-scene__orbit"></span>
+            <span class="space-scene__planet">🪐</span>
+            <div class="koala">
+              <span class="koala__ear koala__ear--left"></span>
+              <span class="koala__ear koala__ear--right"></span>
+              <span class="koala__helmet"></span>
+              <span class="koala__face"><i></i><i></i><b></b></span>
+              <span class="koala__body"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-heading">
+          <div><span class="eyebrow">8 月 25 日 · 星期二</span><h2>今日任务</h2></div>
+          <button id="refreshButton" class="text-button" type="button">刷新</button>
+        </div>
+        <div id="taskGroups" class="task-groups"></div>
+
+        <section class="reward-preview" aria-labelledby="rewardTitle">
+          <div class="section-heading section-heading--compact">
+            <div><span class="eyebrow">星星补给站</span><h2 id="rewardTitle">我的奖励</h2></div>
+            <button class="text-button" type="button" data-show-rewards>全部奖励</button>
+          </div>
+          <div id="childRewards" class="reward-row"></div>
+        </section>
+      </section>
+
+      <section id="parentView" class="view" aria-labelledby="parentTitle">
+        <div class="parent-heading">
+          <div><span class="eyebrow">家长控制台 · Demo</span><h1 id="parentTitle">晚上好，考拉家长</h1></div>
+          <button id="publishButton" class="primary-button" type="button">发布任务</button>
+        </div>
+
+        <div class="parent-summary">
+          <article><span>待确认</span><strong id="pendingCount">2</strong><small>项任务</small></article>
+          <article><span>今日已确认</span><strong id="approvedCount">1</strong><small>项任务</small></article>
+          <article><span>考拉星星</span><strong id="parentStars">12</strong><small>颗可用</small></article>
+        </div>
+
+        <div class="segmented" role="tablist" aria-label="家长管理">
+          <button class="segmented__item is-active" type="button" data-parent-tab="review">待确认</button>
+          <button class="segmented__item" type="button" data-parent-tab="tasks">任务设置</button>
+          <button class="segmented__item" type="button" data-parent-tab="rewards">奖励设置</button>
+          <button class="segmented__item" type="button" data-parent-tab="settings">家庭设置</button>
+        </div>
+
+        <div id="reviewPanel" class="parent-panel is-active">
+          <div class="panel-title"><div><h2>孩子提交的任务</h2><p>确认后，对应星星才会到账。</p></div><span class="count-badge" id="reviewBadge">2 项</span></div>
+          <div id="reviewList" class="review-list"></div>
+        </div>
+
+        <div id="tasksPanel" class="parent-panel">
+          <div class="panel-title"><div><h2>默认时间段与任务</h2><p>每个时间段、任务和星星都可以单独修改。</p></div><button id="addTaskButton" class="secondary-button" type="button">＋ 新增任务</button></div>
+          <div id="manageTaskList" class="manage-list"></div>
+        </div>
+
+        <div id="rewardsPanel" class="parent-panel">
+          <div class="panel-title"><div><h2>自定义奖励</h2><p>孩子申请兑换后，需家长确认。</p></div><button id="addRewardButton" class="secondary-button" type="button">＋ 新增奖励</button></div>
+          <div id="manageRewardList" class="manage-list"></div>
+        </div>
+
+        <div id="settingsPanel" class="parent-panel">
+          <div class="settings-card">
+            <h2>家庭与设备</h2>
+            <div class="setting-row"><div><strong>孩子</strong><span>小名考拉 · 大名仅家长可见</span></div><button class="text-button" type="button">编辑</button></div>
+            <div class="setting-row"><div><strong>共同管理</strong><span>最多两位家长共同确认</span></div><button id="inviteParentButton" class="text-button" type="button">邀请家长</button></div>
+            <div class="setting-row"><div><strong>孩子登录 PIN</strong><span>家庭码配合四位 PIN 登录孩子设备</span></div><button id="childPinButton" class="text-button" type="button">设置</button></div>
+            <div class="setting-row"><div><strong>家长 PIN</strong><span>当前设备切换家长模式时验证</span></div><button id="parentPinButton" class="text-button" type="button">修改</button></div>
+            <label class="setting-row"><div><strong>任务提醒</strong><span>按时间段提醒孩子</span></div><input id="taskReminderToggle" type="checkbox"></label>
+            <label class="setting-row"><div><strong>家长确认提醒</strong><span>孩子提交后通知两位家长</span></div><input id="parentReminderToggle" type="checkbox"></label>
+            <label class="setting-row"><div><strong>启动动画与声音</strong><span>可随时关闭</span></div><input type="checkbox" checked></label>
+            <div class="setting-row"><div><strong>账号</strong><span id="accountStatus">当前为 Demo 模式</span></div><button id="signOutButton" class="text-button" type="button" hidden>退出登录</button></div>
+          </div>
+          <div class="demo-note"><strong>Demo 说明</strong><p>正式版将接入 Supabase，实现双家长账号、跨设备同步、照片存储、通知与离线队列。当前 Demo 数据保存在本机浏览器中。</p></div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="主要导航">
+      <button class="bottom-nav__item is-active" type="button" data-view="child"><span>🚀</span>孩子任务</button>
+      <button class="bottom-nav__item" type="button" data-view="parent"><span>🔐</span>家长管理</button>
+    </nav>
+  </div>
+
+  <dialog id="pinDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="sheet__icon">🔐</span>
+      <h2>进入家长模式</h2>
+      <p id="pinHelp">请输入 4 位家长 PIN。Demo PIN：<strong>2580</strong></p>
+      <input id="pinInput" class="pin-input" type="password" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="家长 PIN">
+      <p id="pinError" class="form-error" role="alert"></p>
+      <button id="pinSubmit" class="primary-button primary-button--wide" type="button">确认进入</button>
+    </form>
+  </dialog>
+
+  <dialog id="publishDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet sheet--wide">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="eyebrow">任务排期</span><h2>发布任务</h2>
+      <div class="form-grid">
+        <label><span>使用模板</span><select><option>上学日模板</option><option>周末模板</option><option>假期模板</option></select></label>
+        <label><span>发布方式</span><select id="publishRange"><option>连续几天</option><option>仅一天</option><option>指定日期范围</option><option>按星期重复</option></select></label>
+        <label><span>开始日期</span><input id="publishStartDate" type="date" value="2026-08-25"></label>
+        <label><span>连续天数</span><input id="publishDays" type="number" min="1" max="30" value="5"></label>
+      </div>
+      <fieldset><legend>遇到已有任务时</legend><label class="radio-card"><input type="radio" name="collision" value="append" checked><span><strong>追加任务</strong><small>保留已安排内容</small></span></label><label class="radio-card"><input type="radio" name="collision" value="replace"><span><strong>替换任务</strong><small>覆盖所选日期内容</small></span></label></fieldset>
+      <div class="publish-preview">将向 <strong id="publishPreviewDays">5 天</strong>发布“上学日模板”，发布前仍可逐日修改。</div>
+      <button id="confirmPublish" class="primary-button primary-button--wide" type="button">确认发布</button>
+    </form>
+  </dialog>
+
+  <dialog id="editorDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="eyebrow" id="editorEyebrow">新增</span><h2 id="editorTitle">新增任务</h2>
+      <label class="field"><span>名称</span><input id="editorName" type="text" maxlength="30"></label>
+      <label class="field"><span id="editorNumberLabel">星星数量</span><input id="editorNumber" type="number" min="1" max="100" value="2"></label>
+      <label id="editorGroupField" class="field"><span>时间段</span><select id="editorGroup"><option>早晨</option><option>放学后</option><option>锻炼</option><option>睡前</option></select></label>
+      <label id="editorPhotoField" class="setting-row setting-row--plain"><div><strong>必须上传照片</strong><span>孩子提交时需要完成证明</span></div><input id="editorPhoto" type="checkbox"></label>
+      <button id="saveEditor" class="primary-button primary-button--wide" type="button">保存</button>
+    </form>
+  </dialog>
+
+  <dialog id="photoDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="sheet__icon">📷</span><h2>上传完成照片</h2>
+      <p id="photoTaskName"></p>
+      <label class="upload-box"><input id="photoInput" type="file" accept="image/*" capture="environment"><span>＋ 选择或拍摄照片</span><small>Demo 只记录已选择，不会上传网络</small></label>
+      <button id="submitWithPhoto" class="primary-button primary-button--wide" type="button" disabled>提交家长确认</button>
+    </form>
+  </dialog>
+
+  <dialog id="familySetupDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet sheet--wide">
+      <span class="eyebrow">首次设置</span><h2>创建考拉家庭</h2>
+      <p>只需设置一次，之后手机和 iPad 会同步同一个家庭。</p>
+      <div class="form-grid">
+        <label><span>家庭名称</span><input id="setupFamilyName" type="text" value="考拉家庭"></label>
+        <label><span>家长称呼</span><input id="setupParentName" type="text" value="考拉家长"></label>
+        <label><span>孩子大名</span><input id="setupChildFullName" type="text" autocomplete="off" placeholder="请由家长填写（不会写入公开源码）"></label>
+        <label><span>孩子小名</span><input id="setupChildNickname" type="text" value="考拉"></label>
+        <label><span>孩子登录 PIN</span><input id="setupChildPin" type="password" inputmode="numeric" maxlength="4" placeholder="4 位数字"></label>
+        <label><span>本机家长 PIN</span><input id="setupParentPin" type="password" inputmode="numeric" maxlength="4" placeholder="4 位数字"></label>
+      </div>
+      <p id="setupMessage" class="auth-message" role="status"></p>
+      <button id="createFamilyButton" class="primary-button primary-button--wide" type="button">创建家庭并生成默认任务</button>
+    </form>
+  </dialog>
+
+  <dialog id="inviteParentDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="sheet__icon">✉️</span><h2>邀请另一位家长</h2>
+      <p>邀请邮件将由 Supabase 发送，对方注册后加入同一个家庭。</p>
+      <label class="field"><span>对方邮箱</span><input id="inviteParentEmail" type="email" autocomplete="email" placeholder="parent@example.com"></label>
+      <p id="inviteResult" class="auth-message" role="status"></p>
+      <button id="sendParentInvite" class="primary-button primary-button--wide" type="button">发送邀请</button>
+    </form>
+  </dialog>
+
+  <dialog id="childPinDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="sheet__icon">🔢</span><h2>设置孩子登录 PIN</h2>
+      <p>家庭码不会改变；重新设置后，旧 PIN 将立即失效。</p>
+      <label class="field"><span>四位数字 PIN</span><input id="newChildPin" type="password" inputmode="numeric" maxlength="4" placeholder="0000"></label>
+      <p id="childPinResult" class="auth-message" role="status"></p>
+      <button id="saveChildPin" class="primary-button primary-button--wide" type="button">保存孩子 PIN</button>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
+  <script src="config.js"></script>
+  <script src="cloud.js?v=5"></script>
+  <script src="app.js?v=5" defer></script>
+</body>
+</html>

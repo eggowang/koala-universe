@@ -1,0 +1,13 @@
+project_id = "koala-universe"
+
+[functions.create-child-login]
+verify_jwt = true
+
+[functions.invite-parent]
+verify_jwt = true
+
+[functions.send-push]
+verify_jwt = true
+
+[functions.send-reminders]
+verify_jwt = false
