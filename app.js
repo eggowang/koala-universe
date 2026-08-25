@@ -348,6 +348,8 @@ function cloudErrorMessage(error) {
   const normalized = message.toUpperCase().replace(/[\s-]+/g, '_');
   const messages = [
     ['EMAIL_NOT_CONFIRMED', '邮箱尚未确认，请先打开确认邮件中的链接'],
+    ['EMAIL_RATE_LIMIT_EXCEEDED', '验证邮件发送次数已达上限，请稍后再试，不要重复点击'],
+    ['OVER_EMAIL_SEND_RATE_LIMIT', '验证邮件发送次数已达上限，请稍后再试，不要重复点击'],
     ['INVALID_LOGIN_CREDENTIALS', '邮箱或密码不正确；孩子登录请检查家庭码和孩子 PIN'],
     ['FAMILY_CODE_INVALID', '家庭码应为 8 位数字或字母 A-F'],
     ['PIN_MUST_BE_FOUR_DIGITS', 'PIN 必须是四位数字'],
@@ -518,6 +520,8 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   $('#parentAuthForm').onsubmit = async event => {
     event.preventDefault();
+    const submitButton = $('#parentAuthSubmit');
+    if (submitButton.disabled) return;
     const password = $('#parentPassword').value;
     if (state.registerMode && password.length < 8) return setAuthMessage('#authMessage', '家长账号密码至少需要 8 位', 'error');
     if (state.registerMode && !/[A-Za-z]/.test(password)) return setAuthMessage('#authMessage', '家长账号密码请至少包含一个英文字母', 'error');
@@ -525,11 +529,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (state.registerMode && password !== $('#parentPasswordConfirm').value) return setAuthMessage('#authMessage', '两次输入的家长账号密码不一致', 'error');
     const payload = { email: $('#parentEmail').value.trim().toLowerCase(), password, displayName: $('#parentDisplayName').value.trim() || '考拉家长' };
     setAuthMessage('#authMessage', state.registerMode ? '正在创建账号…' : '正在登录…');
+    submitButton.disabled = true;
     try {
       const data = state.registerMode ? await window.KoalaCloud.signUpParent(payload) : await window.KoalaCloud.signInParent(payload);
       if (data.session) await activateCloudSession();
       else setAuthMessage('#authMessage', '注册成功，请查看邮箱并点击确认链接。', 'success');
     } catch (error) { setAuthMessage('#authMessage', cloudErrorMessage(error), 'error'); }
+    finally { submitButton.disabled = false; }
   };
   $('#childAuthForm').onsubmit = async event => {
     event.preventDefault();
