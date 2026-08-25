@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
   <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
@@ -68,6 +68,7 @@
       </div>
       <div class="topbar__actions">
         <span id="syncStatus" class="sync-pill"><i></i><b>Demo 本机</b></span>
+        <button id="childAccountButton" class="icon-button" type="button" aria-label="孩子账号设置" title="切换或退出账号" hidden>⇄</button>
         <button id="installButton" class="icon-button" type="button" aria-label="添加到主屏幕" title="添加到主屏幕">＋</button>
       </div>
     </header>
@@ -293,10 +294,21 @@
     </form>
   </dialog>
 
+  <dialog id="childAccountDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="sheet__icon">🐨</span><h2>孩子账号</h2>
+      <p id="childAccountSummary">当前孩子账号</p>
+      <button id="switchChildAccount" class="secondary-button primary-button--wide" type="button">切换孩子账号</button>
+      <button id="exitChildAccount" class="danger-button primary-button--wide" type="button">退出当前账号</button>
+      <p class="field-help">切换账号会保留家庭码；退出账号会清除本机保存的家庭码。</p>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
   <script src="config.js"></script>
-  <script src="cloud.js?v=12"></script>
-  <script src="app.js?v=12" defer></script>
+  <script src="cloud.js?v=13"></script>
+  <script src="app.js?v=13" defer></script>
 </body>
 </html>

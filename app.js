@@ -92,6 +92,29 @@ function openParentPinSetup(openParentAfterSave = false) {
   $('#parentPinDialog').showModal();
   setTimeout(() => $('#newParentPin').focus(), 100);
 }
+function selectAuthTab(tabName) {
+  $$('[data-auth-tab]').forEach(button => button.classList.toggle('is-active', button.dataset.authTab === tabName));
+  $$('.auth-panel').forEach(panel => panel.classList.toggle('is-active', panel.id === `${tabName}AuthForm`));
+}
+async function leaveChildAccount(mode) {
+  const switchButton = $('#switchChildAccount');
+  const exitButton = $('#exitChildAccount');
+  switchButton.disabled = true;
+  exitButton.disabled = true;
+  try {
+    await window.KoalaCloud.signOut();
+    if (mode === 'switch') sessionStorage.setItem('koala-open-child-login', '1');
+    else {
+      sessionStorage.removeItem('koala-open-child-login');
+      localStorage.removeItem('koala-family-code');
+    }
+    location.reload();
+  } catch (error) {
+    showToast(cloudErrorMessage(error));
+    switchButton.disabled = false;
+    exitButton.disabled = false;
+  }
+}
 function getTaskGroups() {
   const configured = state.sections.map(section => section.name);
   const fromTasks = state.tasks.map(task => task.group);
@@ -460,6 +483,8 @@ async function activateCloudSession() {
   state.cloudMode = true;
   state.context = context;
   $('#parentModeLabel').textContent = '家长控制台 · 云端同步';
+  $('#childAccountButton').hidden = context.member_role !== 'child';
+  $('#childAccountSummary').textContent = `${context.child_nickname || '孩子'} · ${context.family_name}`;
   $('#signOutButton').hidden = false;
   $('#accountStatus').textContent = `${context.member_role === 'parent' ? '家长' : '孩子'}账号 · ${context.family_name}`;
   $('#childSettingsValue').textContent = `${context.child_nickname || '孩子'} · 大名仅家长可见`;
@@ -483,6 +508,10 @@ async function initializeCloudMode() {
     if (!result.session) {
       $('#authGate').hidden = false;
       $('#childFamilyCode').value = localStorage.getItem('koala-family-code') || '';
+      if (sessionStorage.getItem('koala-open-child-login') === '1') {
+        sessionStorage.removeItem('koala-open-child-login');
+        selectAuthTab('child');
+      }
       setSyncStatus('等待登录', 'demo');
       return;
     }
@@ -529,11 +558,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $$('[data-parent-tab]').forEach(x => x.classList.remove('is-active')); button.classList.add('is-active');
     $$('.parent-panel').forEach(x => x.classList.remove('is-active')); $(`#${button.dataset.parentTab}Panel`).classList.add('is-active');
   });
-  $$('[data-auth-tab]').forEach(button => button.onclick = () => {
-    $$('[data-auth-tab]').forEach(x => x.classList.toggle('is-active', x === button));
-    $$('.auth-panel').forEach(panel => panel.classList.remove('is-active'));
-    $(`#${button.dataset.authTab}AuthForm`).classList.add('is-active');
-  });
+  $$('[data-auth-tab]').forEach(button => button.onclick = () => selectAuthTab(button.dataset.authTab));
   $('#toggleRegister').onclick = () => {
     state.registerMode = !state.registerMode;
     $('#parentNameField').hidden = !state.registerMode;
@@ -721,6 +746,9 @@ document.addEventListener('DOMContentLoaded', () => {
       location.reload();
     } catch (error) { showToast(cloudErrorMessage(error)); }
   };
+  $('#childAccountButton').onclick = () => $('#childAccountDialog').showModal();
+  $('#switchChildAccount').onclick = () => leaveChildAccount('switch');
+  $('#exitChildAccount').onclick = () => leaveChildAccount('exit');
   const handleNotificationToggle = async event => {
     if (!state.cloudMode) { event.target.checked = false; return showToast('接入 Supabase 后才能开启跨设备提醒'); }
     try {
