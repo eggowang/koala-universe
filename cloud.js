@@ -102,14 +102,17 @@
   async function loadAppData(date) {
     const ctx = context || await getContext();
     if (!ctx) return { context: null };
-    const [missionResult, rewardResult, balanceResult, templateResult, sectionResult] = await Promise.all([
+    const [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, templateResult, sectionResult] = await Promise.all([
       requireClient().from('missions').select('*').eq('family_id', ctx.family_id).eq('scheduled_date', date).order('sort_order'),
       requireClient().from('rewards').select('*').eq('family_id', ctx.family_id).eq('active', true).order('sort_order'),
       requireClient().rpc('current_star_balance', { p_child_id: ctx.child_id }),
+      requireClient().rpc('current_diamond_balance', { p_child_id: ctx.child_id }),
+      requireClient().from('diamond_exchanges').select('*').eq('family_id', ctx.family_id).eq('status', 'pending').order('requested_at', { ascending: false }),
+      requireClient().from('families').select('stars_per_diamond').eq('id', ctx.family_id).single(),
       requireClient().from('task_templates').select('*').eq('family_id', ctx.family_id).eq('active', true).order('created_at'),
       requireClient().from('template_sections').select('*').eq('family_id', ctx.family_id).order('sort_order'),
     ]);
-    for (const result of [missionResult, rewardResult, balanceResult, templateResult, sectionResult]) if (result.error) throw result.error;
+    for (const result of [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, templateResult, sectionResult]) if (result.error) throw result.error;
     const sectionIds = (sectionResult.data || []).map((item) => item.id);
     let templateTasks = [];
     if (sectionIds.length) {
@@ -122,6 +125,9 @@
       missions: missionResult.data || [],
       rewards: rewardResult.data || [],
       stars: Number(balanceResult.data || 0),
+      diamonds: Number(diamondBalanceResult.data || 0),
+      starsPerDiamond: Number(familyResult.data?.stars_per_diamond || 10),
+      diamondExchanges: exchangeResult.data || [],
       templates: templateResult.data || [],
       sections: sectionResult.data || [],
       templateTasks,
@@ -151,9 +157,32 @@
     if (error) throw error;
     return data;
   }
-  async function publishTemplate({ templateId, startDate, days, collision }) {
-    const { data, error } = await requireClient().rpc('publish_template', {
+  async function requestDiamondExchange() {
+    const { data, error } = await requireClient().rpc('request_diamond_exchange');
+    if (error) throw error;
+    return data;
+  }
+  async function reviewDiamondExchange(exchangeId, approve, reason = null) {
+    const { data, error } = await requireClient().rpc('review_diamond_exchange', {
+      p_exchange_id: exchangeId,
+      p_approve: approve,
+      p_reason: reason,
+    });
+    if (error) throw error;
+    return data;
+  }
+  async function saveDiamondExchangeRate(familyId, starsPerDiamond) {
+    const { data, error } = await requireClient().rpc('set_diamond_exchange_rate', {
+      p_family_id: familyId,
+      p_stars_per_diamond: starsPerDiamond,
+    });
+    if (error) throw error;
+    return data;
+  }
+  async function publishTemplate({ templateId, taskIds, startDate, days, collision }) {
+    const { data, error } = await requireClient().rpc('publish_template_selection', {
       p_template_id: templateId,
+      p_task_ids: taskIds,
       p_start_date: startDate,
       p_days: days,
       p_collision: collision,
@@ -186,6 +215,12 @@
       ? requireClient().from('template_tasks').update(payload).eq('id', task.id)
       : requireClient().from('template_tasks').insert(payload);
     const { error } = await query;
+    if (error) throw error;
+  }
+  async function deleteTemplateTask(taskId) {
+    const { error } = await requireClient().from('template_tasks').delete()
+      .eq('id', taskId)
+      .eq('family_id', context.family_id);
     if (error) throw error;
   }
   async function saveReward(reward) {
@@ -265,6 +300,9 @@
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rewards', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'redemptions', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'star_ledger', filter: `family_id=eq.${context.family_id}` }, onChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'diamond_exchanges', filter: `family_id=eq.${context.family_id}` }, onChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'diamond_ledger', filter: `family_id=eq.${context.family_id}` }, onChange)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'families', filter: `id=eq.${context.family_id}` }, onChange)
       .subscribe();
     return realtimeChannel;
   }
@@ -272,7 +310,8 @@
   window.KoalaCloud = {
     isConfigured, init, getSession, onAuthStateChange, signUpParent, signInParent, signInChild, signOut,
     getContext, createFamily, acceptInvite, createChildLogin, inviteParent, loadAppData, uploadEvidence,
-    submitMission, reviewMission, requestRedemption, publishTemplate, publishTemplateTask, saveTemplateTask, saveReward,
+    submitMission, reviewMission, requestRedemption, requestDiamondExchange, reviewDiamondExchange, saveDiamondExchangeRate,
+    publishTemplate, publishTemplateTask, saveTemplateTask, deleteTemplateTask, saveReward,
     getEvidenceUrl, enablePushNotifications, disablePushNotifications, subscribe,
   };
 })();

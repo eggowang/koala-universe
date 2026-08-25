@@ -16,6 +16,9 @@ const state = {
   tasks: JSON.parse(localStorage.getItem('koala-demo-tasks') || 'null') || initialTasks,
   rewards: JSON.parse(localStorage.getItem('koala-demo-rewards') || 'null') || initialRewards,
   stars: Number(localStorage.getItem('koala-demo-stars') || 12),
+  diamonds: Number(localStorage.getItem('koala-demo-diamonds') || 0),
+  starsPerDiamond: Number(localStorage.getItem('koala-demo-stars-per-diamond') || 10),
+  diamondExchanges: JSON.parse(localStorage.getItem('koala-demo-diamond-exchanges') || 'null') || [],
   parentUnlocked: false,
   editing: null,
   pendingPhotoTask: null,
@@ -122,6 +125,52 @@ function getTaskGroups() {
 }
 function getManagedTasks() { return state.cloudMode ? state.templateTasks : state.tasks; }
 
+function selectedPublishTaskIds() {
+  return $$('input[name="publish-task"]:checked', $('#publishTaskChoices')).map(input => input.value);
+}
+function updatePublishPreview() {
+  const selectedCount = selectedPublishTaskIds().length;
+  const totalCount = $$('input[name="publish-task"]', $('#publishTaskChoices')).length;
+  const days = $('#publishRange').value === '仅一天' ? 1 : Math.max(1, Number($('#publishDays').value) || 1);
+  $('#publishPreviewTasks').textContent = `${selectedCount} 条任务`;
+  $('#publishPreviewDays').textContent = `${days} 天`;
+  $('#toggleAllPublishTasks').textContent = totalCount > 0 && selectedCount === totalCount ? '取消全选' : '全选';
+  $('#confirmPublish').disabled = selectedCount === 0;
+}
+function renderPublishTaskChoices() {
+  const container = $('#publishTaskChoices');
+  container.replaceChildren();
+  getManagedTasks().forEach(task => {
+    const label = document.createElement('label');
+    label.className = 'publish-task-choice';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.name = 'publish-task';
+    checkbox.value = task.id;
+    checkbox.checked = true;
+    checkbox.addEventListener('change', updatePublishPreview);
+    const art = document.createElement('span');
+    art.className = `task-art task-art--${taskVisualType(task)} task-art--compact`;
+    art.setAttribute('aria-hidden', 'true');
+    art.innerHTML = taskIllustrations[taskVisualType(task)];
+    const copy = document.createElement('span');
+    const title = document.createElement('strong');
+    title.textContent = task.name;
+    const meta = document.createElement('small');
+    meta.textContent = `${task.group} · ⭐ ${task.stars}`;
+    copy.append(title, meta);
+    label.append(checkbox, art, copy);
+    container.append(label);
+  });
+  if (!container.children.length) {
+    const empty = document.createElement('p');
+    empty.className = 'publish-task-empty';
+    empty.textContent = '还没有可发布的任务，请先新增任务。';
+    container.append(empty);
+  }
+  updatePublishPreview();
+}
+
 function taskVisualType(task) {
   const text = `${task.name}${task.group}`;
   if (/数学|口算|计算/.test(text)) return 'math';
@@ -157,6 +206,9 @@ function save() {
   localStorage.setItem('koala-demo-tasks', JSON.stringify(state.tasks));
   localStorage.setItem('koala-demo-rewards', JSON.stringify(state.rewards));
   localStorage.setItem('koala-demo-stars', String(state.stars));
+  localStorage.setItem('koala-demo-diamonds', String(state.diamonds));
+  localStorage.setItem('koala-demo-stars-per-diamond', String(state.starsPerDiamond));
+  localStorage.setItem('koala-demo-diamond-exchanges', JSON.stringify(state.diamondExchanges));
 }
 function statusText(task) {
   if (task.status === 'approved') return '家长已确认';
@@ -195,7 +247,16 @@ function renderReview() {
     try { window.open(await window.KoalaCloud.getEvidenceUrl(button.dataset.evidence), '_blank', 'noopener'); }
     catch (error) { showToast(cloudErrorMessage(error)); }
   });
+  renderDiamondExchangeReviews();
   renderSummary();
+}
+function pendingDiamondExchanges() { return state.diamondExchanges.filter(exchange => exchange.status === 'pending'); }
+function renderDiamondExchangeReviews() {
+  const pending = pendingDiamondExchanges();
+  $('#exchangeReviewBadge').textContent = `${pending.length} 项`;
+  $('#exchangeReviewList').innerHTML = pending.length ? pending.map(exchange => `<article class="review-item"><div class="review-item__main"><div class="review-item__photo">💎</div><div><strong>兑换 ${exchange.diamondsReceived} 颗钻石</strong><span>需要 ⭐ ${exchange.starsSpent} · 等待家长确认</span></div></div><div class="review-item__actions"><button class="approve" type="button" data-approve-exchange="${exchange.id}">确认</button><button class="reject" type="button" data-reject-exchange="${exchange.id}">拒绝</button></div></article>`).join('') : '<div class="demo-note"><strong>暂无钻石兑换申请</strong><p>孩子申请后会显示在这里。</p></div>';
+  $$('[data-approve-exchange]').forEach(button => button.onclick = () => reviewDiamondExchange(button.dataset.approveExchange, true));
+  $$('[data-reject-exchange]').forEach(button => button.onclick = () => reviewDiamondExchange(button.dataset.rejectExchange, false));
 }
 function renderManageLists() {
   $('#manageTaskList').innerHTML = getManagedTasks().map(task => `<article class="manage-item"><button class="manage-item__main manage-item__main--publish" type="button" data-quick-publish="${task.id}" aria-label="选择${task.name}的发布日期">${taskArt(task, true)}<div><strong>${task.name}</strong><span>${task.group} · ⭐ ${task.stars} · ${task.photo ? '必须照片' : '无需照片'}</span></div></button><button class="edit" type="button" data-edit-task="${task.id}">编辑</button></article>`).join('');
@@ -214,7 +275,7 @@ function openQuickPublishTask(taskId) {
   $('#quickPublishDate').value = localIsoDate();
   $('#quickPublishDays').value = 1;
   setAuthMessage('#quickPublishMessage', '将发布到今天。');
-  $('#quickPublishDialog').showModal();
+  showDialogAtTop($('#quickPublishDialog'));
 }
 async function confirmQuickPublish() {
   const task = findById(getManagedTasks(), state.quickPublishTaskId);
@@ -236,14 +297,20 @@ async function confirmQuickPublish() {
   finally { button.disabled = false; }
 }
 function renderSummary() {
-  const pending = state.tasks.filter(t => t.status === 'submitted').length;
+  const pendingTasks = state.tasks.filter(t => t.status === 'submitted').length;
+  const pendingExchanges = pendingDiamondExchanges().length;
   const approved = state.tasks.filter(t => t.status === 'approved').length;
   $('#starBalance').textContent = state.stars;
+  $('#diamondBalance').textContent = state.diamonds;
   $('#parentStars').textContent = state.stars;
+  $('#parentDiamonds').textContent = state.diamonds;
   $('#doneCount').textContent = `${approved}/${state.tasks.length}`;
-  $('#pendingCount').textContent = pending;
+  $('#pendingCount').textContent = pendingTasks + pendingExchanges;
   $('#approvedCount').textContent = approved;
-  $('#reviewBadge').textContent = `${pending} 项`;
+  $('#reviewBadge').textContent = `${pendingTasks} 项`;
+  $('#childExchangeRate').textContent = state.starsPerDiamond;
+  $('#starsPerDiamond').value = state.starsPerDiamond;
+  $('#childExchangePending').textContent = pendingExchanges ? `已有 ${pendingExchanges} 个申请等待家长确认` : '由家长设置兑换比例，确认后才会生效';
   $('#missionSummary').textContent = `今天有 ${state.tasks.length} 个任务，完成后请爸爸妈妈确认。`;
 }
 function renderAll() { renderTasks(); renderRewards(); renderReview(); renderManageLists(); save(); }
@@ -320,6 +387,11 @@ function switchView(view) {
   $(`#${view}View`).classList.add('view--active');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+function showDialogAtTop(dialog) {
+  const sheet = $('.sheet', dialog);
+  if (sheet) sheet.scrollTop = 0;
+  dialog.showModal();
+}
 function openEditor(type, id = null) {
   state.editing = { type, id };
   const item = id ? findById(type === 'task' ? getManagedTasks() : state.rewards, id) : null;
@@ -333,7 +405,8 @@ function openEditor(type, id = null) {
   $('#editorPhoto').checked = Boolean(item?.photo);
   $('#editorGroupField').hidden = type !== 'task';
   $('#editorPhotoField').hidden = type !== 'task';
-  $('#editorDialog').showModal();
+  $('#editorDeleteArea').hidden = !(type === 'task' && id);
+  showDialogAtTop($('#editorDialog'));
 }
 async function saveEditor() {
   const { type, id } = state.editing;
@@ -376,6 +449,76 @@ async function saveEditor() {
   renderAll();
   showToast('已保存');
 }
+async function deleteEditorTask() {
+  const { type, id } = state.editing || {};
+  if (type !== 'task' || !id) return;
+  const task = findById(getManagedTasks(), id);
+  if (!task) return showToast('没有找到这个任务');
+  if (!window.confirm(`确定删除“${task.name}”吗？\n\n只会删除任务模板，已经发布的任务和完成记录会保留。`)) return;
+  const button = $('#deleteEditor');
+  button.disabled = true;
+  try {
+    if (state.cloudMode) {
+      await window.KoalaCloud.deleteTemplateTask(id);
+      $('#editorDialog').close();
+      await loadCloudData();
+      showToast('任务模板已删除并同步');
+    } else {
+      state.tasks = state.tasks.filter(item => !sameId(item.id, id));
+      $('#editorDialog').close();
+      renderAll();
+      showToast('任务已删除');
+    }
+  } catch (error) { showToast(cloudErrorMessage(error)); }
+  finally { button.disabled = false; }
+}
+async function requestDiamondExchange() {
+  if (state.context?.member_role === 'parent') return showToast('请在孩子设备上申请兑换钻石');
+  const pendingStars = pendingDiamondExchanges().reduce((sum, exchange) => sum + exchange.starsSpent, 0);
+  if (state.stars - pendingStars < state.starsPerDiamond) return showToast(`还需要 ${state.starsPerDiamond - (state.stars - pendingStars)} 颗星星`);
+  const button = $('#requestDiamondExchange');
+  button.disabled = true;
+  try {
+    if (state.cloudMode) {
+      await window.KoalaCloud.requestDiamondExchange();
+      await loadCloudData();
+    } else {
+      state.diamondExchanges.push({ id: Date.now(), starsSpent: state.starsPerDiamond, diamondsReceived: 1, status: 'pending' });
+      renderAll();
+    }
+    showToast('兑换申请已发送，等待家长确认');
+  } catch (error) { showToast(cloudErrorMessage(error)); }
+  finally { button.disabled = false; }
+}
+async function reviewDiamondExchange(id, approve) {
+  try {
+    if (state.cloudMode) {
+      await window.KoalaCloud.reviewDiamondExchange(id, approve);
+      await loadCloudData();
+    } else {
+      const exchange = findById(state.diamondExchanges, id);
+      if (!exchange || exchange.status !== 'pending') return showToast('这个申请已经处理过了');
+      if (approve && state.stars < exchange.starsSpent) return showToast('当前星星不足，无法确认兑换');
+      exchange.status = approve ? 'approved' : 'rejected';
+      if (approve) { state.stars -= exchange.starsSpent; state.diamonds += exchange.diamondsReceived; }
+      renderAll();
+    }
+    showToast(approve ? '已确认兑换钻石' : '已拒绝兑换申请');
+  } catch (error) { showToast(cloudErrorMessage(error)); }
+}
+async function saveDiamondRate() {
+  const rate = Number($('#starsPerDiamond').value);
+  if (!Number.isInteger(rate) || rate < 1 || rate > 1000) return showToast('兑换比例应为 1 到 1000 颗星星');
+  const button = $('#saveDiamondRate');
+  button.disabled = true;
+  try {
+    if (state.cloudMode) await window.KoalaCloud.saveDiamondExchangeRate(state.context.family_id, rate);
+    state.starsPerDiamond = rate;
+    renderAll();
+    showToast(state.cloudMode ? '兑换比例已保存并同步' : '兑换比例已保存');
+  } catch (error) { showToast(cloudErrorMessage(error)); }
+  finally { button.disabled = false; }
+}
 function showToast(message) {
   const toast = $('#toast'); toast.textContent = message; toast.classList.add('is-visible');
   clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.remove('is-visible'), 2200);
@@ -413,8 +556,11 @@ function cloudErrorMessage(error) {
     ['USER_ALREADY_REGISTERED', '该邮箱已经注册，请返回登录'],
     ['PASSWORD_SHOULD_BE_AT_LEAST', '密码长度不足，请至少输入 8 位'],
     ['AUTH_REQUIRED', '请先登录'],
+    ['CHILD_AUTH_REQUIRED', '请在孩子设备登录后申请兑换'],
     ['PHOTO_REQUIRED', '这个任务必须上传照片'],
     ['INSUFFICIENT_STARS', '星星不足，暂时不能兑换'],
+    ['RATE_OUT_OF_RANGE', '兑换比例应为 1 到 1000 颗星星'],
+    ['DIAMOND_EXCHANGE_NOT_PENDING', '这个钻石兑换申请已经处理过了'],
     ['PARENT_PERMISSION_REQUIRED', '只有家长可以执行这个操作'],
   ];
   const found = messages.find(([key]) => normalized.includes(key));
@@ -458,6 +604,14 @@ async function loadCloudData() {
   }));
   state.rewards = data.rewards.map(reward => ({ id: reward.id, icon: reward.icon, name: reward.title, cost: reward.cost }));
   state.stars = data.stars;
+  state.diamonds = data.diamonds;
+  state.starsPerDiamond = data.starsPerDiamond;
+  state.diamondExchanges = data.diamondExchanges.map(exchange => ({
+    id: exchange.id,
+    starsSpent: exchange.stars_spent,
+    diamondsReceived: exchange.diamonds_received,
+    status: exchange.status,
+  }));
   renderAll();
   setSyncStatus('已同步', 'online');
 }
@@ -651,7 +805,11 @@ document.addEventListener('DOMContentLoaded', () => {
       } else setAuthMessage('#setupMessage', cloudErrorMessage(error), 'error');
     }
   };
-  $('#publishButton').onclick = () => $('#publishDialog').showModal();
+  $('#publishButton').onclick = () => {
+    $('#publishStartDate').value = localIsoDate();
+    renderPublishTaskChoices();
+    showDialogAtTop($('#publishDialog'));
+  };
   $$('[data-quick-date-offset]').forEach(button => button.onclick = () => {
     const date = new Date();
     date.setDate(date.getDate() + Number(button.dataset.quickDateOffset));
@@ -659,23 +817,41 @@ document.addEventListener('DOMContentLoaded', () => {
     setAuthMessage('#quickPublishMessage', button.dataset.quickDateOffset === '0' ? '将发布到今天。' : '将从明天开始发布。');
   });
   $('#confirmQuickPublish').onclick = confirmQuickPublish;
-  $('#publishDays').oninput = e => $('#publishPreviewDays').textContent = `${e.target.value || 1} 天`;
+  $('#publishDays').oninput = updatePublishPreview;
+  $('#publishRange').onchange = updatePublishPreview;
+  $('#toggleAllPublishTasks').onclick = () => {
+    const checkboxes = $$('input[name="publish-task"]', $('#publishTaskChoices'));
+    const shouldSelectAll = !checkboxes.length || checkboxes.some(input => !input.checked);
+    checkboxes.forEach(input => { input.checked = shouldSelectAll; });
+    updatePublishPreview();
+  };
   $('#confirmPublish').onclick = async () => {
     const days = $('#publishRange').value === '仅一天' ? 1 : Number($('#publishDays').value || 1);
-    if (!state.cloudMode) { $('#publishDialog').close(); return showToast(`任务已发布 ${days} 天`); }
+    const taskIds = selectedPublishTaskIds();
+    if (!taskIds.length) return showToast('请至少选择一条任务');
+    if (!Number.isInteger(days) || days < 1 || days > 30) return showToast('连续天数应为 1 到 30 天');
+    if (!state.cloudMode) { $('#publishDialog').close(); return showToast(`已模拟发布 ${taskIds.length} 条任务，共 ${days} 天`); }
+    const button = $('#confirmPublish');
+    button.disabled = true;
+    const originalText = button.textContent;
+    button.textContent = '正在发布…';
     try {
       const template = state.templates[0];
       if (!template) return showToast('请先创建一个任务模板');
       const collision = $('input[name="collision"]:checked').value;
-      const count = await window.KoalaCloud.publishTemplate({ templateId: template.id, startDate: $('#publishStartDate').value, days, collision });
+      const count = await window.KoalaCloud.publishTemplate({ templateId: template.id, taskIds, startDate: $('#publishStartDate').value, days, collision });
       $('#publishDialog').close();
       await loadCloudData();
       showToast(`已发布 ${count} 项任务`);
     } catch (error) { showToast(cloudErrorMessage(error)); }
+    finally { button.disabled = false; button.textContent = originalText; }
   };
   $('#addTaskButton').onclick = () => openEditor('task');
   $('#addRewardButton').onclick = () => openEditor('reward');
   $('#saveEditor').onclick = saveEditor;
+  $('#deleteEditor').onclick = deleteEditorTask;
+  $('#requestDiamondExchange').onclick = requestDiamondExchange;
+  $('#saveDiamondRate').onclick = saveDiamondRate;
   $('#photoInput').onchange = e => { state.pendingPhotoFile = e.target.files[0] || null; $('#submitWithPhoto').disabled = !state.pendingPhotoFile; };
   $('#submitWithPhoto').onclick = async () => { const task = findById(state.tasks, state.pendingPhotoTask); $('#photoDialog').close(); await submitTask(task, state.pendingPhotoFile); };
   $('#refreshButton').onclick = async () => {
