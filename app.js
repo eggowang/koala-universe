@@ -43,7 +43,11 @@ const state = {
   realtimeRefreshTimer: null,
   registerMode: false,
   openParentAfterPinSetup: false,
-  quickPublishTaskId: null
+  quickPublishTaskId: null,
+  aiLastResult: '',
+  aiLastTitle: '',
+  aiLastSubject: '',
+  aiLastType: 'exercise'
 };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -54,6 +58,9 @@ function sameId(a, b) { return String(a) === String(b); }
 function findById(items, id) { return items.find(item => sameId(item.id, id)); }
 const PARENT_PIN_KEY = 'koala-parent-pin-v2';
 const LEGACY_PARENT_PIN_KEY = 'koala-parent-pin';
+const AI_ENDPOINT_KEY = 'koala-ai-endpoint-v1';
+const AI_MODEL_KEY = 'koala-ai-model-v1';
+const AI_API_KEY_SESSION = 'koala-ai-api-key-v1';
 
 function normalizeFamilyCode(value) { return String(value || '').replace(/[^0-9a-f]/gi, '').slice(0, 8).toUpperCase(); }
 function formatFamilyCode(value) {
@@ -358,6 +365,168 @@ function openLearningEditor(id = null) {
   $('#learningDeleteArea').hidden = !id;
   showDialogAtTop($('#learningEditorDialog'));
 }
+function openAiAssistant() {
+  $('#aiEndpoint').value = localStorage.getItem(AI_ENDPOINT_KEY) || '';
+  $('#aiModel').value = localStorage.getItem(AI_MODEL_KEY) || '';
+  $('#aiApiKey').value = sessionStorage.getItem(AI_API_KEY_SESSION) || '';
+  $('#aiApiKey').type = 'password';
+  $('#toggleAiKeyVisibility').textContent = '显示';
+  $('#toggleAiKeyVisibility').setAttribute('aria-pressed', 'false');
+  if (state.aiLastResult) {
+    $('#aiResultTitle').textContent = state.aiLastTitle;
+    $('#aiResultContent').textContent = state.aiLastResult;
+    $('#aiResult').hidden = false;
+  } else $('#aiResult').hidden = true;
+  setAuthMessage('#aiAssistantStatus', '接口信息由家长填写；生成内容先预览，再决定是否保存。');
+  showDialogAtTop($('#aiAssistantDialog'));
+}
+function normalizeAiEndpoint(value) {
+  const url = new URL(String(value || '').trim());
+  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('API 地址必须以 http:// 或 https:// 开头');
+  const pathname = url.pathname.replace(/\/+$/, '');
+  if (!pathname || pathname === '/') url.pathname = '/v1/chat/completions';
+  else if (/\/v1$/i.test(pathname)) url.pathname = `${pathname}/chat/completions`;
+  return url.toString();
+}
+function aiResponseText(data) {
+  if (typeof data?.output_text === 'string') return data.output_text.trim();
+  const chatContent = data?.choices?.[0]?.message?.content;
+  if (typeof chatContent === 'string') return chatContent.trim();
+  if (Array.isArray(chatContent)) {
+    const text = chatContent.map(item => typeof item === 'string' ? item : item?.text || item?.content || '').join('\n').trim();
+    if (text) return text;
+  }
+  if (typeof data?.choices?.[0]?.text === 'string') return data.choices[0].text.trim();
+  if (Array.isArray(data?.output)) {
+    const text = data.output.flatMap(item => item?.content || []).map(item => item?.text || '').join('\n').trim();
+    if (text) return text;
+  }
+  return '';
+}
+function aiMaterialParts(text, subject) {
+  const rawText = String(text || '').trim();
+  const readableText = !rawText.includes('\n') && rawText.includes('\\n') ? rawText.replace(/\\n/g, '\n') : rawText;
+  const lines = readableText.split(/\r?\n/);
+  const titleMatch = lines[0]?.match(/^\s*(?:标题|题目)\s*[：:]\s*(.+)$/);
+  const title = (titleMatch?.[1] || `${subject} AI 学习资料`).replace(/^[《“"]|[》”"]$/g, '').trim().slice(0, 60);
+  const content = (titleMatch ? lines.slice(1).join('\n').trim() : lines.join('\n').trim());
+  return { title, content };
+}
+function aiSystemPrompt(subject, type) {
+  return `你是一名严谨的小学学习助手，帮助家长为上海小学二年级学生制作${subject}${type === 'exercise' ? '原创练习题' : '原创知识卡'}。内容应符合儿童理解水平，表达清楚，难度适中，不超纲。不得声称复制教材、题库或付费学习平台的原文。第一行必须写“标题：简短标题”，之后给出完整内容。${type === 'exercise' ? '练习题最后另列“家长参考答案”，答案与题目清楚分开。' : '使用简短分点和例子帮助孩子理解。'}只输出可直接给家长审阅的学习内容。`;
+}
+function aiUserPrompt(subject, type, request) {
+  return `学生范围：上海小学二年级\n学科：${subject}\n资料类型：${type === 'exercise' ? '练习题' : '知识卡'}\n家长要求：${request}`;
+}
+async function generateAiMaterial() {
+  const endpointInput = $('#aiEndpoint').value.trim();
+  const apiKey = $('#aiApiKey').value.trim();
+  const model = $('#aiModel').value.trim();
+  const subject = $('#aiSubject').value;
+  const type = $('#aiMaterialType').value;
+  const request = $('#aiPrompt').value.trim();
+  if (!endpointInput) return setAuthMessage('#aiAssistantStatus', '请填写 API 地址。', 'error');
+  if (!model) return setAuthMessage('#aiAssistantStatus', '请填写接口对应的模型名称。', 'error');
+  if (!apiKey) return setAuthMessage('#aiAssistantStatus', '请填写 API Key。', 'error');
+  if (!request) return setAuthMessage('#aiAssistantStatus', '请告诉 AI 想生成什么内容。', 'error');
+  let endpoint;
+  try { endpoint = normalizeAiEndpoint(endpointInput); }
+  catch (error) { return setAuthMessage('#aiAssistantStatus', error.message, 'error'); }
+
+  localStorage.setItem(AI_ENDPOINT_KEY, endpointInput);
+  localStorage.setItem(AI_MODEL_KEY, model);
+  sessionStorage.setItem(AI_API_KEY_SESSION, apiKey);
+  const systemPrompt = aiSystemPrompt(subject, type);
+  const userPrompt = aiUserPrompt(subject, type, request);
+  const isResponsesApi = /\/responses\/?(?:\?|$)/i.test(endpoint);
+  const payload = isResponsesApi
+    ? { model, instructions: systemPrompt, input: userPrompt }
+    : { model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }] };
+  const button = $('#generateAiMaterial');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  button.disabled = true;
+  button.textContent = 'AI 正在生成…';
+  $('#aiResult').hidden = true;
+  setAuthMessage('#aiAssistantStatus', '正在连接你填写的 AI 接口，请稍候…');
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    const raw = await response.text();
+    let data = null;
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = {}; }
+    if (!response.ok) {
+      const detail = String(data?.error?.message || data?.message || `接口返回 ${response.status}`).slice(0, 180);
+      throw new Error(detail);
+    }
+    const result = aiResponseText(data);
+    if (!result) throw new Error('接口已响应，但没有找到可显示的文字内容，请检查接口格式。');
+    const parts = aiMaterialParts(result, subject);
+    state.aiLastResult = parts.content;
+    state.aiLastTitle = parts.title;
+    state.aiLastSubject = subject;
+    state.aiLastType = type;
+    $('#aiResultTitle').textContent = parts.title;
+    $('#aiResultContent').textContent = parts.content;
+    $('#aiResult').hidden = false;
+    setAuthMessage('#aiAssistantStatus', '生成完成。请先检查题目和答案，再转为学习资料。', 'success');
+    $('#aiResult').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (error) {
+    const message = error.name === 'AbortError'
+      ? '请求超过 60 秒，请检查接口地址或稍后重试。'
+      : error instanceof TypeError
+        ? '无法从网页连接这个接口。请检查地址，并确认接口允许浏览器跨域访问（CORS）。'
+        : `调用失败：${error.message}`;
+    setAuthMessage('#aiAssistantStatus', message, 'error');
+  } finally {
+    clearTimeout(timeout);
+    button.disabled = false;
+    button.textContent = '✨ 开始生成';
+  }
+}
+function useAiResultAsMaterial() {
+  if (!state.aiLastResult) return showToast('请先生成并检查内容', 'error');
+  const subject = state.aiLastSubject || $('#aiSubject').value;
+  const type = state.aiLastType || $('#aiMaterialType').value;
+  const wasTruncated = state.aiLastResult.length > 3000;
+  $('#aiAssistantDialog').close();
+  openLearningEditor();
+  $('#learningSubject').value = subject;
+  $('#learningType').value = type;
+  $('#learningTitle').value = state.aiLastTitle || `${subject} AI 学习资料`;
+  $('#learningContent').value = state.aiLastResult.slice(0, 3000);
+  $('#learningSource').value = 'AI 生成（家长审核）';
+  $('#learningUrl').value = '';
+  $('#learningPublished').checked = false;
+  showToast(wasTruncated ? '内容较长，已截取前 3000 字，请家长继续编辑' : '已转为未发布资料，请家长检查并编辑');
+}
+function setQuickAiPrompt(kind) {
+  const subject = $('#aiSubject').value;
+  const prompts = {
+    '基础练习': {
+      '语文': '生成 5 道二年级语文基础练习，包含词语搭配、句子表达和一题短阅读，难度循序渐进。',
+      '数学': '生成 5 道 100 以内加减法和生活应用题，难度循序渐进，要求写出家长参考答案。',
+      '英语': '生成 5 道适合二年级的基础英语练习，包含常用单词、简单句型和选择题。',
+    },
+    '错题讲解': {
+      '语文': '制作一份家长可填写错题的语文讲解模板，包括易错原因、正确思路、相似练习。',
+      '数学': '制作一份家长可填写错题的数学讲解模板，包括审题、分步思路、验算和相似练习。',
+      '英语': '制作一份家长可填写错题的英语讲解模板，包括词义、句型、错误原因和相似练习。',
+    },
+    '知识卡片': {
+      '语文': '制作一张二年级语文知识卡，用简短规则和例子讲清一个常用语言知识点。',
+      '数学': '制作一张二年级数学知识卡，用步骤和例子讲清一个 100 以内计算知识点。',
+      '英语': '制作一张二年级英语知识卡，包含 6 个常用词和 2 个简单例句。',
+    },
+  };
+  $('#aiMaterialType').value = kind === '知识卡片' ? 'note' : 'exercise';
+  $('#aiPrompt').value = prompts[kind]?.[subject] || '';
+  $('#aiPrompt').focus();
+}
 async function saveLearningMaterial() {
   const id = state.editingMaterialId;
   const title = $('#learningTitle').value.trim();
@@ -541,8 +710,11 @@ function switchView(view) {
 }
 function showDialogAtTop(dialog) {
   const sheet = $('.sheet', dialog);
-  if (sheet) sheet.scrollTop = 0;
   dialog.showModal();
+  if (sheet) {
+    sheet.scrollTop = 0;
+    requestAnimationFrame(() => { sheet.scrollTop = 0; });
+  }
 }
 function openEditor(type, id = null) {
   state.editing = { type, id };
@@ -1020,6 +1192,25 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#addTaskButton').onclick = () => openEditor('task');
   $('#addRewardButton').onclick = () => openEditor('reward');
   $('#addLearningMaterial').onclick = () => openLearningEditor();
+  $('#openAiAssistant').onclick = openAiAssistant;
+  $('#toggleAiKeyVisibility').onclick = () => {
+    const show = $('#aiApiKey').type === 'password';
+    $('#aiApiKey').type = show ? 'text' : 'password';
+    $('#toggleAiKeyVisibility').textContent = show ? '隐藏' : '显示';
+    $('#toggleAiKeyVisibility').setAttribute('aria-pressed', String(show));
+  };
+  $('#clearAiConfig').onclick = () => {
+    localStorage.removeItem(AI_ENDPOINT_KEY);
+    localStorage.removeItem(AI_MODEL_KEY);
+    sessionStorage.removeItem(AI_API_KEY_SESSION);
+    $('#aiEndpoint').value = '';
+    $('#aiModel').value = '';
+    $('#aiApiKey').value = '';
+    setAuthMessage('#aiAssistantStatus', '已清除这台设备保存的接口地址、模型名称和本次标签页的 Key。', 'success');
+  };
+  $$('[data-ai-prompt]').forEach(button => button.onclick = () => setQuickAiPrompt(button.dataset.aiPrompt));
+  $('#generateAiMaterial').onclick = generateAiMaterial;
+  $('#useAiResult').onclick = useAiResultAsMaterial;
   $$('[data-learning-subject]').forEach(button => button.onclick = () => {
     state.learningSubject = button.dataset.learningSubject;
     renderLearningMaterials();

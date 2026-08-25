@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=19">
+  <link rel="stylesheet" href="styles.css?v=22">
 </head>
 <body>
   <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
@@ -152,7 +152,7 @@
         </div>
 
         <div id="learningPanel" class="parent-panel">
-          <div class="panel-title"><div><h2>上海二年级学习资料库</h2><p>家长管理全部资料；孩子只能查看已发布并关联到任务的内容。</p></div><button id="addLearningMaterial" class="secondary-button" type="button">＋ 新增资料</button></div>
+          <div class="panel-title"><div><h2>上海二年级学习资料库</h2><p>家长管理全部资料；孩子只能查看已发布并关联到任务的内容。</p></div><div class="learning-panel-actions"><button id="openAiAssistant" class="ai-button" type="button">✨ AI 资料助手</button><button id="addLearningMaterial" class="secondary-button" type="button">＋ 新增资料</button></div></div>
           <div class="subject-filters" role="group" aria-label="按学科筛选">
             <button class="is-active" type="button" data-learning-subject="全部">全部</button>
             <button type="button" data-learning-subject="语文">语文</button>
@@ -284,6 +284,44 @@
     </form>
   </dialog>
 
+  <dialog id="aiAssistantDialog" class="sheet-dialog sheet-dialog--ai">
+    <form method="dialog" class="sheet sheet--wide">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="eyebrow">家长专用</span><h2>AI 学习资料助手</h2>
+      <p>输入自己的接口信息，让 AI 生成适合上海小学二年级的原创练习。结果会先给家长预览，不会自动发布给孩子。</p>
+
+      <section class="ai-config-card" aria-labelledby="aiConfigTitle">
+        <div class="ai-section-heading"><div><strong id="aiConfigTitle">接口设置</strong><span>支持 OpenAI 兼容的 Chat Completions 或 Responses 接口</span></div><button id="clearAiConfig" class="text-button" type="button">清除本机配置</button></div>
+        <label class="field"><span>API 地址</span><input id="aiEndpoint" type="url" inputmode="url" autocomplete="url" placeholder="例如：https://api.example.com/v1"></label>
+        <div class="form-grid ai-config-grid">
+          <label><span>模型名称</span><input id="aiModel" type="text" autocomplete="off" placeholder="例如：gpt-4o-mini"></label>
+          <label><span>API Key</span><span class="input-with-action"><input id="aiApiKey" type="password" autocomplete="off" spellcheck="false" placeholder="只在本次标签页保留"><button id="toggleAiKeyVisibility" class="input-action" type="button" aria-pressed="false">显示</button></span></label>
+        </div>
+        <div class="ai-security-note"><span aria-hidden="true">🔒</span><p><strong>Key 不会写入家庭数据、GitHub 或 Supabase。</strong>它只保留到当前标签页关闭；调用时会发送到你填写的 API 地址。API 地址和模型名称仅保存在这台设备。</p></div>
+      </section>
+
+      <div class="form-grid ai-prompt-grid">
+        <label><span>学科</span><select id="aiSubject"><option>语文</option><option>数学</option><option>英语</option></select></label>
+        <label><span>资料类型</span><select id="aiMaterialType"><option value="exercise">练习题</option><option value="note">知识卡</option></select></label>
+      </div>
+      <label class="field"><span>想让 AI 生成什么</span><textarea id="aiPrompt" rows="5" maxlength="1200" placeholder="例如：生成 5 道 100 以内加减法练习，难度循序渐进，最后附家长参考答案。"></textarea></label>
+      <div class="ai-quick-prompts" aria-label="快捷要求">
+        <button type="button" data-ai-prompt="基础练习">基础练习</button>
+        <button type="button" data-ai-prompt="错题讲解">错题讲解</button>
+        <button type="button" data-ai-prompt="知识卡片">知识卡片</button>
+      </div>
+      <p id="aiAssistantStatus" class="auth-message" role="status" aria-live="polite"></p>
+      <button id="generateAiMaterial" class="primary-button primary-button--wide ai-generate-button" type="button">✨ 开始生成</button>
+
+      <section id="aiResult" class="ai-result-card" hidden aria-labelledby="aiResultTitle">
+        <div class="ai-section-heading"><div><span class="eyebrow">生成结果</span><strong id="aiResultTitle">请家长先检查内容</strong></div></div>
+        <div id="aiResultContent" class="ai-result-content"></div>
+        <p>AI 可能出错，请核对题目和答案。下一步会进入资料编辑页，默认保持“仅家长可见”。</p>
+        <button id="useAiResult" class="secondary-button primary-button--wide" type="button">转为学习资料并继续编辑</button>
+      </section>
+    </form>
+  </dialog>
+
   <dialog id="learningEditorDialog" class="sheet-dialog">
     <form method="dialog" class="sheet sheet--wide">
       <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
@@ -374,7 +412,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastIcon" class="toast__icon" aria-hidden="true">✓</span><span id="toastMessage"></span></div>
   <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
   <script src="config.js"></script>
-  <script src="cloud.js?v=19"></script>
-  <script src="app.js?v=19" defer></script>
+  <script src="cloud.js?v=22"></script>
+  <script src="app.js?v=22" defer></script>
 </body>
 </html>
