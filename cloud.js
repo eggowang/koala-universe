@@ -39,7 +39,9 @@
     return data;
   }
   async function signInChild({ familyCode, pin }) {
-    const code = familyCode.trim().toUpperCase();
+    const code = familyCode.replace(/[^0-9a-f]/gi, '').toUpperCase();
+    if (!/^[0-9A-F]{8}$/.test(code)) throw new Error('FAMILY_CODE_INVALID');
+    if (!/^[0-9]{4}$/.test(pin)) throw new Error('PIN_MUST_BE_FOUR_DIGITS');
     const { data: loginEmail, error: resolveError } = await requireClient().rpc('resolve_child_login', { p_family_code: code });
     if (resolveError || !loginEmail) throw resolveError || new Error('家庭码不存在或尚未设置孩子 PIN');
     const { data, error } = await requireClient().auth.signInWithPassword({
@@ -85,6 +87,7 @@
     return data;
   }
   async function createChildLogin(familyId, pin) {
+    if (!/^[0-9]{4}$/.test(pin)) throw new Error('PIN_MUST_BE_FOUR_DIGITS');
     const { data, error } = await requireClient().functions.invoke('create-child-login', { body: { familyId, pin } });
     if (error) throw error;
     if (data?.error) throw new Error(data.error);

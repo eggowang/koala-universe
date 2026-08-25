@@ -1,5 +1,5 @@
-const CACHE_NAME = 'koala-universe-demo-v8';
-const APP_SHELL = ['./', './index.html', './styles.css?v=8', './app.js?v=8', './cloud.js?v=8', './config.js', './manifest.webmanifest', './app-icon.svg', './icon-192.png', './icon-512.png'];
+const CACHE_NAME = 'koala-universe-demo-v9';
+const APP_SHELL = ['./', './index.html', './styles.css?v=9', './app.js?v=9', './cloud.js?v=9', './config.js', './manifest.webmanifest', './app-icon.svg', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())));
 self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', event => {

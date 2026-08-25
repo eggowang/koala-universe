@@ -26,7 +26,8 @@ const state = {
   sections: [],
   templateTasks: [],
   realtimeRefreshTimer: null,
-  registerMode: false
+  registerMode: false,
+  openParentAfterPinSetup: false
 };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -35,6 +36,61 @@ const groupIcons = { '早晨': '☀️', '放学后': '🛰️', '锻炼': '🏃
 
 function sameId(a, b) { return String(a) === String(b); }
 function findById(items, id) { return items.find(item => sameId(item.id, id)); }
+const PARENT_PIN_KEY = 'koala-parent-pin-v2';
+const LEGACY_PARENT_PIN_KEY = 'koala-parent-pin';
+
+function normalizeFamilyCode(value) { return String(value || '').replace(/[^0-9a-f]/gi, '').slice(0, 8).toUpperCase(); }
+function formatFamilyCode(value) {
+  const code = normalizeFamilyCode(value);
+  return code.length > 4 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+}
+function isWeakPin(pin) {
+  return /^(\d)\1{3}$/.test(pin) || ['0123', '1234', '2345', '3456', '4567', '5678', '6789', '9876', '8765', '7654', '6543', '5432', '4321', '3210'].includes(pin);
+}
+function pinHashSalt() {
+  return [...crypto.getRandomValues(new Uint8Array(16))].map(value => value.toString(16).padStart(2, '0')).join('');
+}
+async function hashParentPin(pin, salt) {
+  const bytes = new TextEncoder().encode(`${salt}:${pin}`);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join('');
+}
+function parentPinRecord() {
+  try { return JSON.parse(localStorage.getItem(PARENT_PIN_KEY) || 'null'); }
+  catch { return null; }
+}
+function hasParentPin() {
+  const record = parentPinRecord();
+  return Boolean(record?.salt && record?.hash) || /^[0-9]{4}$/.test(localStorage.getItem(LEGACY_PARENT_PIN_KEY) || '');
+}
+async function storeParentPin(pin) {
+  const salt = pinHashSalt();
+  const hash = await hashParentPin(pin, salt);
+  localStorage.setItem(PARENT_PIN_KEY, JSON.stringify({ salt, hash, version: 2 }));
+  localStorage.removeItem(LEGACY_PARENT_PIN_KEY);
+}
+async function verifyParentPin(pin) {
+  const record = parentPinRecord();
+  if (record?.salt && record?.hash) return (await hashParentPin(pin, record.salt)) === record.hash;
+  const legacyPin = localStorage.getItem(LEGACY_PARENT_PIN_KEY);
+  if (legacyPin && pin === legacyPin) { await storeParentPin(pin); return true; }
+  return !state.cloudMode && pin === '2580';
+}
+function updateParentPinStatus() {
+  const status = $('#parentPinStatus');
+  const button = $('#parentPinButton');
+  if (!status || !button) return;
+  status.textContent = hasParentPin() ? '已设置 · 仅保护当前设备' : '未设置 · 仅保护当前设备';
+  button.textContent = hasParentPin() ? '修改' : '设置';
+}
+function openParentPinSetup(openParentAfterSave = false) {
+  state.openParentAfterPinSetup = openParentAfterSave;
+  $('#newParentPin').value = '';
+  $('#newParentPinConfirm').value = '';
+  setAuthMessage('#parentPinResult', '');
+  $('#parentPinDialog').showModal();
+  setTimeout(() => $('#newParentPin').focus(), 100);
+}
 function getTaskGroups() {
   const configured = state.sections.map(section => section.name);
   const fromTasks = state.tasks.map(task => task.group);
@@ -289,15 +345,22 @@ function setSyncStatus(text, tone = 'online') {
 }
 function cloudErrorMessage(error) {
   const message = String(error?.message || error || '操作失败');
-  const messages = {
-    INVALID_LOGIN_CREDENTIALS: '账号、家庭码或 PIN 不正确',
-    AUTH_REQUIRED: '请先登录',
-    PHOTO_REQUIRED: '这个任务必须上传照片',
-    INSUFFICIENT_STARS: '星星不足，暂时不能兑换',
-    PARENT_PERMISSION_REQUIRED: '只有家长可以执行这个操作',
-  };
-  const key = Object.keys(messages).find(item => message.toUpperCase().includes(item));
-  return key ? messages[key] : `操作未完成：${message}`;
+  const normalized = message.toUpperCase().replace(/[\s-]+/g, '_');
+  const messages = [
+    ['EMAIL_NOT_CONFIRMED', '邮箱尚未确认，请先打开确认邮件中的链接'],
+    ['INVALID_LOGIN_CREDENTIALS', '邮箱或密码不正确；孩子登录请检查家庭码和孩子 PIN'],
+    ['FAMILY_CODE_INVALID', '家庭码应为 8 位数字或字母 A-F'],
+    ['PIN_MUST_BE_FOUR_DIGITS', 'PIN 必须是四位数字'],
+    ['USER_ALREADY_HAS_FAMILY', '当前账号已经加入家庭，请刷新页面继续'],
+    ['USER_ALREADY_REGISTERED', '该邮箱已经注册，请返回登录'],
+    ['PASSWORD_SHOULD_BE_AT_LEAST', '密码长度不足，请至少输入 8 位'],
+    ['AUTH_REQUIRED', '请先登录'],
+    ['PHOTO_REQUIRED', '这个任务必须上传照片'],
+    ['INSUFFICIENT_STARS', '星星不足，暂时不能兑换'],
+    ['PARENT_PERMISSION_REQUIRED', '只有家长可以执行这个操作'],
+  ];
+  const found = messages.find(([key]) => normalized.includes(key));
+  return found ? found[1] : `操作未完成：${message}`;
 }
 function setAuthMessage(selector, message, type = '') {
   const element = $(selector);
@@ -363,9 +426,12 @@ async function activateCloudSession() {
   state.context = context;
   $('#signOutButton').hidden = false;
   $('#accountStatus').textContent = `${context.member_role === 'parent' ? '家长' : '孩子'}账号 · ${context.family_name}`;
+  $('#childSettingsValue').textContent = `${context.child_nickname || '孩子'} · 大名仅家长可见`;
+  $('#familyCodeValue').textContent = formatFamilyCode(context.family_code) || '尚未生成';
   $('#taskReminderToggle').closest('.setting-row').hidden = context.member_role !== 'child';
   $('#parentReminderToggle').closest('.setting-row').hidden = context.member_role !== 'parent';
-  $('#pinHelp').textContent = '请输入当前设备设置的 4 位家长 PIN。';
+  $('#pinHelp').textContent = hasParentPin() ? '请输入当前设备设置的 4 位家长 PIN。' : '当前设备尚未设置家长 PIN。';
+  updateParentPinStatus();
   await loadCloudData();
   await window.KoalaCloud.subscribe(queueRealtimeRefresh);
   if (context.member_role === 'child') switchView('child');
@@ -394,6 +460,11 @@ async function initializeCloudMode() {
 
 document.addEventListener('DOMContentLoaded', () => {
   const date = new Date();
+  ['pinInput', 'childLoginPin', 'setupChildPin', 'setupChildPinConfirm', 'setupParentPin', 'setupParentPinConfirm', 'newChildPin', 'newChildPinConfirm', 'newParentPin', 'newParentPinConfirm'].forEach(id => {
+    const input = $(`#${id}`);
+    if (input) input.oninput = () => { input.value = input.value.replace(/\D/g, '').slice(0, 4); };
+  });
+  $('#childFamilyCode').oninput = event => { event.target.value = formatFamilyCode(event.target.value); };
   $('#todayLabel').textContent = `${date.getMonth() + 1} 月 ${date.getDate()} 日 · 考拉`;
   $('#publishStartDate').value = localIsoDate(date);
   renderAll();
@@ -403,12 +474,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (button.dataset.view === 'parent' && state.cloudMode && state.context?.member_role === 'child') {
       return showToast('孩子设备需先退出孩子账号，再由家长登录');
     }
-    if (button.dataset.view === 'parent' && !state.parentUnlocked) { $('#pinDialog').showModal(); setTimeout(() => $('#pinInput').focus(), 100); }
+    if (button.dataset.view === 'parent' && !state.parentUnlocked) {
+      if (state.cloudMode && !hasParentPin()) return openParentPinSetup(true);
+      $('#pinInput').value = '';
+      $('#pinError').textContent = '';
+      $('#pinDialog').showModal();
+      setTimeout(() => $('#pinInput').focus(), 100);
+    }
     else switchView(button.dataset.view);
   });
-  $('#pinSubmit').onclick = () => {
-    const expectedPin = localStorage.getItem('koala-parent-pin') || '2580';
-    if ($('#pinInput').value !== expectedPin) { $('#pinError').textContent = state.cloudMode ? '家长 PIN 不正确' : 'PIN 不正确，请输入 Demo PIN 2580'; return; }
+  $('#pinSubmit').onclick = async () => {
+    const pin = $('#pinInput').value;
+    if (!/^[0-9]{4}$/.test(pin)) { $('#pinError').textContent = '请输入四位数字 PIN'; return; }
+    if (!(await verifyParentPin(pin))) { $('#pinError').textContent = state.cloudMode ? '家长 PIN 不正确' : 'PIN 不正确，请输入 Demo PIN 2580'; return; }
     state.parentUnlocked = true; $('#pinError').textContent = ''; $('#pinDialog').close(); switchView('parent');
   };
   $$('[data-parent-tab]').forEach(button => button.onclick = () => {
@@ -423,14 +501,29 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#toggleRegister').onclick = () => {
     state.registerMode = !state.registerMode;
     $('#parentNameField').hidden = !state.registerMode;
+    $('#parentPasswordConfirmField').hidden = !state.registerMode;
     $('#parentAuthSubmit').textContent = state.registerMode ? '创建家长账号' : '登录';
     $('#toggleRegister').textContent = state.registerMode ? '已有账号？返回登录' : '第一次使用？创建家长账号';
     $('#parentPassword').autocomplete = state.registerMode ? 'new-password' : 'current-password';
+    $('#parentPasswordConfirm').required = state.registerMode;
+    $('#parentPasswordConfirm').value = '';
     setAuthMessage('#authMessage', '');
+  };
+  $('#togglePasswordVisibility').onclick = () => {
+    const show = $('#parentPassword').type === 'password';
+    $('#parentPassword').type = show ? 'text' : 'password';
+    $('#parentPasswordConfirm').type = show ? 'text' : 'password';
+    $('#togglePasswordVisibility').textContent = show ? '隐藏' : '显示';
+    $('#togglePasswordVisibility').setAttribute('aria-pressed', String(show));
   };
   $('#parentAuthForm').onsubmit = async event => {
     event.preventDefault();
-    const payload = { email: $('#parentEmail').value.trim(), password: $('#parentPassword').value, displayName: $('#parentDisplayName').value.trim() || '考拉家长' };
+    const password = $('#parentPassword').value;
+    if (state.registerMode && password.length < 8) return setAuthMessage('#authMessage', '家长账号密码至少需要 8 位', 'error');
+    if (state.registerMode && !/[A-Za-z]/.test(password)) return setAuthMessage('#authMessage', '家长账号密码请至少包含一个英文字母', 'error');
+    if (state.registerMode && !/[0-9]/.test(password)) return setAuthMessage('#authMessage', '家长账号密码请至少包含一个数字', 'error');
+    if (state.registerMode && password !== $('#parentPasswordConfirm').value) return setAuthMessage('#authMessage', '两次输入的家长账号密码不一致', 'error');
+    const payload = { email: $('#parentEmail').value.trim().toLowerCase(), password, displayName: $('#parentDisplayName').value.trim() || '考拉家长' };
     setAuthMessage('#authMessage', state.registerMode ? '正在创建账号…' : '正在登录…');
     try {
       const data = state.registerMode ? await window.KoalaCloud.signUpParent(payload) : await window.KoalaCloud.signInParent(payload);
@@ -440,9 +533,11 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   $('#childAuthForm').onsubmit = async event => {
     event.preventDefault();
-    const familyCode = $('#childFamilyCode').value;
+    const familyCode = normalizeFamilyCode($('#childFamilyCode').value);
     const pin = $('#childLoginPin').value;
+    if (!/^[0-9A-F]{8}$/.test(familyCode)) return setAuthMessage('#childAuthMessage', '请输入完整的 8 位家庭码', 'error');
     if (!/^[0-9]{4}$/.test(pin)) return setAuthMessage('#childAuthMessage', '请输入四位数字 PIN', 'error');
+    $('#childFamilyCode').value = formatFamilyCode(familyCode);
     setAuthMessage('#childAuthMessage', '正在进入考拉任务…');
     try {
       await window.KoalaCloud.signInChild({ familyCode, pin });
@@ -452,22 +547,44 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#useDemoMode').onclick = () => { $('#authGate').hidden = true; state.cloudMode = false; setSyncStatus('Demo 本机', 'demo'); };
   $('#createFamilyButton').onclick = async () => {
     const childPin = $('#setupChildPin').value;
+    const childPinConfirm = $('#setupChildPinConfirm').value;
     const parentPin = $('#setupParentPin').value;
+    const parentPinConfirm = $('#setupParentPinConfirm').value;
+    if (!$('#setupFamilyName').value.trim() || !$('#setupParentName').value.trim() || !$('#setupChildFullName').value.trim() || !$('#setupChildNickname').value.trim()) return setAuthMessage('#setupMessage', '请完整填写家庭、家长和孩子信息', 'error');
     if (!/^[0-9]{4}$/.test(childPin) || !/^[0-9]{4}$/.test(parentPin)) return setAuthMessage('#setupMessage', '孩子 PIN 和家长 PIN 都必须是四位数字', 'error');
+    if (childPin !== childPinConfirm) return setAuthMessage('#setupMessage', '两次输入的孩子 PIN 不一致', 'error');
+    if (parentPin !== parentPinConfirm) return setAuthMessage('#setupMessage', '两次输入的家长 PIN 不一致', 'error');
+    if (childPin === parentPin) return setAuthMessage('#setupMessage', '孩子 PIN 与家长 PIN 不能相同', 'error');
+    if (isWeakPin(childPin) || isWeakPin(parentPin)) return setAuthMessage('#setupMessage', '请不要使用连续或重复数字作为 PIN', 'error');
     setAuthMessage('#setupMessage', '正在创建家庭、默认任务和孩子登录…');
+    let created = null;
     try {
-      const created = await window.KoalaCloud.createFamily({
+      created = await window.KoalaCloud.createFamily({
         familyName: $('#setupFamilyName').value,
         parentName: $('#setupParentName').value,
         childFullName: $('#setupChildFullName').value,
         childNickname: $('#setupChildNickname').value,
       });
-      localStorage.setItem('koala-parent-pin', parentPin);
-      await window.KoalaCloud.createChildLogin(created.family_id, childPin);
+      await storeParentPin(parentPin);
+      try {
+        await window.KoalaCloud.createChildLogin(created.family_id, childPin);
+      } catch (childError) {
+        $('#familySetupDialog').close();
+        await activateCloudSession();
+        setAuthMessage('#childPinResult', `家庭已创建，请重新设置孩子 PIN：${cloudErrorMessage(childError)}`, 'error');
+        $('#childPinDialog').showModal();
+        return;
+      }
       $('#familySetupDialog').close();
       await activateCloudSession();
-      showToast(`家庭已创建，家庭码：${created.family_code}`);
-    } catch (error) { setAuthMessage('#setupMessage', cloudErrorMessage(error), 'error'); }
+      showToast(`家庭已创建，家庭码：${formatFamilyCode(created.family_code)}`);
+    } catch (error) {
+      if (created) {
+        $('#familySetupDialog').close();
+        await activateCloudSession().catch(() => {});
+        showToast('家庭已创建，请在设置中继续配置 PIN');
+      } else setAuthMessage('#setupMessage', cloudErrorMessage(error), 'error');
+    }
   };
   $('#publishButton').onclick = () => $('#publishDialog').showModal();
   $('#publishDays').oninput = e => $('#publishPreviewDays').textContent = `${e.target.value || 1} 天`;
@@ -504,23 +621,59 @@ document.addEventListener('DOMContentLoaded', () => {
       setAuthMessage('#inviteResult', result.emailSent ? '邀请邮件已发送。' : '邮件未发送，可复制生成的邀请链接。', result.emailSent ? 'success' : 'error');
     } catch (error) { setAuthMessage('#inviteResult', cloudErrorMessage(error), 'error'); }
   };
-  $('#childPinButton').onclick = () => state.cloudMode ? $('#childPinDialog').showModal() : showToast('接入 Supabase 后可设置孩子 PIN');
+  $('#childPinButton').onclick = () => {
+    if (!state.cloudMode) return showToast('登录家长账号后可设置孩子 PIN');
+    $('#newChildPin').value = '';
+    $('#newChildPinConfirm').value = '';
+    setAuthMessage('#childPinResult', '孩子登录时需要同时输入家庭码和孩子 PIN。');
+    $('#childPinDialog').showModal();
+  };
   $('#saveChildPin').onclick = async () => {
     const pin = $('#newChildPin').value;
+    const confirmPin = $('#newChildPinConfirm').value;
     if (!/^[0-9]{4}$/.test(pin)) return setAuthMessage('#childPinResult', '请输入四位数字 PIN', 'error');
+    if (pin !== confirmPin) return setAuthMessage('#childPinResult', '两次输入的孩子 PIN 不一致', 'error');
+    if (isWeakPin(pin)) return setAuthMessage('#childPinResult', '请不要使用连续或重复数字作为孩子 PIN', 'error');
     setAuthMessage('#childPinResult', '正在保存…');
     try {
       const result = await window.KoalaCloud.createChildLogin(state.context.family_id, pin);
-      setAuthMessage('#childPinResult', `已保存。家庭码：${result.familyCode}`, 'success');
+      $('#newChildPin').value = '';
+      $('#newChildPinConfirm').value = '';
+      setAuthMessage('#childPinResult', `已保存。家庭码：${formatFamilyCode(result.familyCode)}`, 'success');
     } catch (error) { setAuthMessage('#childPinResult', cloudErrorMessage(error), 'error'); }
   };
-  $('#parentPinButton').onclick = () => {
-    const pin = window.prompt('请输入新的四位家长 PIN（仅保存在当前设备）');
-    if (pin === null) return;
-    if (!/^[0-9]{4}$/.test(pin)) return showToast('家长 PIN 必须是四位数字');
-    localStorage.setItem('koala-parent-pin', pin); state.parentUnlocked = false; showToast('当前设备的家长 PIN 已修改');
+  $('#copyFamilyCodeButton').onclick = async () => {
+    const code = normalizeFamilyCode(state.context?.family_code);
+    if (!code) return showToast('家庭码尚未生成');
+    try { await navigator.clipboard.writeText(code); showToast(`家庭码 ${formatFamilyCode(code)} 已复制`); }
+    catch { showToast(`家庭码：${formatFamilyCode(code)}`); }
   };
-  $('#signOutButton').onclick = async () => { try { await window.KoalaCloud.signOut(); location.reload(); } catch (error) { showToast(cloudErrorMessage(error)); } };
+  $('#parentPinButton').onclick = () => openParentPinSetup(false);
+  $('#saveParentPin').onclick = async () => {
+    const pin = $('#newParentPin').value;
+    const confirmPin = $('#newParentPinConfirm').value;
+    if (!/^[0-9]{4}$/.test(pin)) return setAuthMessage('#parentPinResult', '请输入四位数字 PIN', 'error');
+    if (pin !== confirmPin) return setAuthMessage('#parentPinResult', '两次输入的家长 PIN 不一致', 'error');
+    if (isWeakPin(pin)) return setAuthMessage('#parentPinResult', '请不要使用连续或重复数字作为家长 PIN', 'error');
+    try {
+      await storeParentPin(pin);
+      state.parentUnlocked = true;
+      updateParentPinStatus();
+      const openParentAfterSave = state.openParentAfterPinSetup;
+      state.openParentAfterPinSetup = false;
+      $('#parentPinDialog').close();
+      showToast('家长 PIN 已保存到当前设备，不会上传云端');
+      if (openParentAfterSave) switchView('parent');
+    } catch { setAuthMessage('#parentPinResult', '当前浏览器无法安全保存 PIN', 'error'); }
+  };
+  $('#signOutButton').onclick = async () => {
+    try {
+      await window.KoalaCloud.signOut();
+      localStorage.removeItem(PARENT_PIN_KEY);
+      localStorage.removeItem(LEGACY_PARENT_PIN_KEY);
+      location.reload();
+    } catch (error) { showToast(cloudErrorMessage(error)); }
+  };
   const handleNotificationToggle = async event => {
     if (!state.cloudMode) { event.target.checked = false; return showToast('接入 Supabase 后才能开启跨设备提醒'); }
     try {

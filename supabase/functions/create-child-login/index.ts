@@ -60,7 +60,9 @@ Deno.serve(async (req) => {
       .single()
     if (childError || !child) throw new Error('CHILD_NOT_FOUND')
 
-    const loginEmail = family.child_login_email || `child-${familyId}@koala.invalid`
+    // example.com is a reserved, syntactically valid domain. This account is
+    // created as already confirmed and never receives email.
+    const loginEmail = family.child_login_email || `child-${familyId}@example.com`
     const password = `Koala!${family.invite_code}!${pin}`
     let childUserId = child.auth_user_id as string | null
 
