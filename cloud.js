@@ -102,17 +102,26 @@
   async function loadAppData(date) {
     const ctx = context || await getContext();
     if (!ctx) return { context: null };
-    const [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, templateResult, sectionResult] = await Promise.all([
+    const [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, learningResult, templateResult, sectionResult] = await Promise.all([
       requireClient().from('missions').select('*').eq('family_id', ctx.family_id).eq('scheduled_date', date).order('sort_order'),
       requireClient().from('rewards').select('*').eq('family_id', ctx.family_id).eq('active', true).order('sort_order'),
       requireClient().rpc('current_star_balance', { p_child_id: ctx.child_id }),
       requireClient().rpc('current_diamond_balance', { p_child_id: ctx.child_id }),
       requireClient().from('diamond_exchanges').select('*').eq('family_id', ctx.family_id).eq('status', 'pending').order('requested_at', { ascending: false }),
       requireClient().from('families').select('stars_per_diamond').eq('id', ctx.family_id).single(),
+      requireClient().from('learning_materials').select('*').eq('family_id', ctx.family_id).eq('active', true).order('sort_order'),
       requireClient().from('task_templates').select('*').eq('family_id', ctx.family_id).eq('active', true).order('created_at'),
       requireClient().from('template_sections').select('*').eq('family_id', ctx.family_id).order('sort_order'),
     ]);
-    for (const result of [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, templateResult, sectionResult]) if (result.error) throw result.error;
+    for (const result of [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, learningResult, templateResult, sectionResult]) if (result.error) throw result.error;
+    let learningMaterials = learningResult.data || [];
+    if (ctx.member_role === 'parent' && !learningMaterials.length) {
+      const seedResult = await requireClient().rpc('seed_default_learning_materials');
+      if (seedResult.error) throw seedResult.error;
+      const refreshedLearning = await requireClient().from('learning_materials').select('*').eq('family_id', ctx.family_id).eq('active', true).order('sort_order');
+      if (refreshedLearning.error) throw refreshedLearning.error;
+      learningMaterials = refreshedLearning.data || [];
+    }
     const sectionIds = (sectionResult.data || []).map((item) => item.id);
     let templateTasks = [];
     if (sectionIds.length) {
@@ -128,6 +137,7 @@
       diamonds: Number(diamondBalanceResult.data || 0),
       starsPerDiamond: Number(familyResult.data?.stars_per_diamond || 10),
       diamondExchanges: exchangeResult.data || [],
+      learningMaterials,
       templates: templateResult.data || [],
       sections: sectionResult.data || [],
       templateTasks,
@@ -223,6 +233,38 @@
       .eq('family_id', context.family_id);
     if (error) throw error;
   }
+  async function saveLearningMaterial(material) {
+    const payload = {
+      family_id: context.family_id,
+      template_task_id: material.taskId || null,
+      subject: material.subject,
+      grade: 2,
+      semester: '上册',
+      material_type: material.type,
+      title: material.title,
+      content: material.content,
+      source_label: material.source || '家长自建',
+      source_url: material.url || null,
+      published: material.published,
+      active: true,
+      updated_at: new Date().toISOString(),
+    };
+    if (material.id) {
+      const { error } = await requireClient().from('learning_materials').update(payload)
+        .eq('id', material.id).eq('family_id', context.family_id);
+      if (error) throw error;
+      return;
+    }
+    const { data: userData, error: userError } = await requireClient().auth.getUser();
+    if (userError || !userData.user) throw userError || new Error('AUTH_REQUIRED');
+    const { error } = await requireClient().from('learning_materials').insert({ ...payload, created_by: userData.user.id });
+    if (error) throw error;
+  }
+  async function deleteLearningMaterial(materialId) {
+    const { error } = await requireClient().from('learning_materials').delete()
+      .eq('id', materialId).eq('family_id', context.family_id);
+    if (error) throw error;
+  }
   async function saveReward(reward) {
     const payload = {
       family_id: context.family_id,
@@ -302,6 +344,7 @@
       .on('postgres_changes', { event: '*', schema: 'public', table: 'star_ledger', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'diamond_exchanges', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'diamond_ledger', filter: `family_id=eq.${context.family_id}` }, onChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'learning_materials', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'families', filter: `id=eq.${context.family_id}` }, onChange)
       .subscribe();
     return realtimeChannel;
@@ -311,7 +354,7 @@
     isConfigured, init, getSession, onAuthStateChange, signUpParent, signInParent, signInChild, signOut,
     getContext, createFamily, acceptInvite, createChildLogin, inviteParent, loadAppData, uploadEvidence,
     submitMission, reviewMission, requestRedemption, requestDiamondExchange, reviewDiamondExchange, saveDiamondExchangeRate,
-    publishTemplate, publishTemplateTask, saveTemplateTask, deleteTemplateTask, saveReward,
+    publishTemplate, publishTemplateTask, saveTemplateTask, deleteTemplateTask, saveLearningMaterial, deleteLearningMaterial, saveReward,
     getEvidenceUrl, enablePushNotifications, disablePushNotifications, subscribe,
   };
 })();

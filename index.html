@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=18">
+  <link rel="stylesheet" href="styles.css?v=19">
 </head>
 <body>
   <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
@@ -134,6 +134,7 @@
         <div class="segmented" role="tablist" aria-label="家长管理">
           <button class="segmented__item is-active" type="button" data-parent-tab="review">待确认</button>
           <button class="segmented__item" type="button" data-parent-tab="tasks">任务设置</button>
+          <button class="segmented__item" type="button" data-parent-tab="learning">学习资料</button>
           <button class="segmented__item" type="button" data-parent-tab="rewards">奖励设置</button>
           <button class="segmented__item" type="button" data-parent-tab="settings">家庭设置</button>
         </div>
@@ -148,6 +149,17 @@
         <div id="tasksPanel" class="parent-panel">
           <div class="panel-title"><div><h2>默认时间段与任务</h2><p>点击任务卡片可快速选择日期发布；“编辑”用于修改模板。</p></div><button id="addTaskButton" class="secondary-button" type="button">＋ 新增任务</button></div>
           <div id="manageTaskList" class="manage-list"></div>
+        </div>
+
+        <div id="learningPanel" class="parent-panel">
+          <div class="panel-title"><div><h2>上海二年级学习资料库</h2><p>家长管理全部资料；孩子只能查看已发布并关联到任务的内容。</p></div><button id="addLearningMaterial" class="secondary-button" type="button">＋ 新增资料</button></div>
+          <div class="subject-filters" role="group" aria-label="按学科筛选">
+            <button class="is-active" type="button" data-learning-subject="全部">全部</button>
+            <button type="button" data-learning-subject="语文">语文</button>
+            <button type="button" data-learning-subject="数学">数学</button>
+            <button type="button" data-learning-subject="英语">英语</button>
+          </div>
+          <div id="learningMaterialList" class="learning-material-list"></div>
         </div>
 
         <div id="rewardsPanel" class="parent-panel">
@@ -263,6 +275,36 @@
     </form>
   </dialog>
 
+  <dialog id="learningViewerDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet sheet--wide">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="eyebrow" id="learningViewerSubject">学习资料</span><h2 id="learningViewerTitle">任务学习页</h2>
+      <p>以下内容由家长选择并发布，完成后返回任务页打卡。</p>
+      <div id="learningViewerContent" class="learning-viewer-content"></div>
+    </form>
+  </dialog>
+
+  <dialog id="learningEditorDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet sheet--wide">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="eyebrow" id="learningEditorEyebrow">新增</span><h2 id="learningEditorTitle">新增学习资料</h2>
+      <div class="form-grid">
+        <label><span>学科</span><select id="learningSubject"><option>语文</option><option>数学</option><option>英语</option></select></label>
+        <label><span>资料类型</span><select id="learningType"><option value="exercise">练习题</option><option value="note">知识卡</option><option value="link">网络链接</option></select></label>
+      </div>
+      <label class="field"><span>标题</span><input id="learningTitle" type="text" maxlength="60" placeholder="例如：100 以内加减法练习"></label>
+      <label class="field"><span>关联任务</span><select id="learningTask"><option value="">暂不关联任务</option></select></label>
+      <label class="field"><span>题目或资料内容</span><textarea id="learningContent" rows="7" maxlength="3000" placeholder="可输入题目、阅读材料、学习提示等"></textarea></label>
+      <div class="form-grid">
+        <label><span>来源名称</span><input id="learningSource" type="text" maxlength="50" placeholder="例如：家长自建"></label>
+        <label><span>公开网页链接（选填）</span><input id="learningUrl" type="url" maxlength="500" placeholder="https://..."></label>
+      </div>
+      <label class="setting-row setting-row--plain"><div><strong>发布给孩子</strong><span>开启后，孩子可从关联任务进入查看</span></div><input id="learningPublished" type="checkbox" checked></label>
+      <button id="saveLearningMaterial" class="primary-button primary-button--wide" type="button">保存资料</button>
+      <div id="learningDeleteArea" class="editor-delete-area" hidden><button id="deleteLearningMaterial" class="danger-button editor-delete-button" type="button">删除此资料</button></div>
+    </form>
+  </dialog>
+
   <dialog id="familySetupDialog" class="sheet-dialog">
     <form method="dialog" class="sheet sheet--wide">
       <span class="eyebrow">首次设置</span><h2>创建考拉家庭</h2>
@@ -332,7 +374,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastIcon" class="toast__icon" aria-hidden="true">✓</span><span id="toastMessage"></span></div>
   <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
   <script src="config.js"></script>
-  <script src="cloud.js?v=18"></script>
-  <script src="app.js?v=18" defer></script>
+  <script src="cloud.js?v=19"></script>
+  <script src="app.js?v=19" defer></script>
 </body>
 </html>

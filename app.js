@@ -12,6 +12,15 @@ const initialRewards = [
   { id: 2, icon: '🎮', name: '周末游戏 30 分钟', cost: 30 },
   { id: 3, icon: '🚲', name: '选择一次亲子活动', cost: 50 }
 ];
+const initialLearningMaterials = [
+  { id: 'demo-cn-1', subject: '语文', type: 'note', title: '看图说话三步法', taskId: 2, content: '第一步：看清时间、地点和人物。\n第二步：按顺序说清楚发生了什么。\n第三步：补充人物的动作、表情和感受。', source: '家长自建示例', url: '', published: true },
+  { id: 'demo-cn-2', subject: '语文', type: 'exercise', title: '词语搭配小练习', taskId: 2, content: '1. 在括号里填上合适的词：一（　）小河、一（　）铅笔。\n2. 用“认真”写一句完整的话。\n3. 找出“明亮”的近义词。', source: '原创练习', url: '', published: true },
+  { id: 'demo-math-1', subject: '数学', type: 'exercise', title: '100 以内加减法', taskId: 3, content: '1. 36 + 27 = ______\n2. 82 - 45 = ______\n3. 48 + 19 - 25 = ______\n4. 比 60 少 18 的数是 ______。', source: '原创练习', url: '', published: true },
+  { id: 'demo-math-2', subject: '数学', type: 'exercise', title: '生活应用题', taskId: 3, content: '文具盒里有 24 支铅笔，借给同学 7 支，后来又放进 9 支。现在文具盒里有多少支铅笔？请写出算式和答案。', source: '原创练习', url: '', published: true },
+  { id: 'demo-en-1', subject: '英语', type: 'note', title: 'My school bag 词汇卡', taskId: null, content: 'school bag — 书包\nbook — 书\npencil — 铅笔\nruler — 尺子\n句型：I have a pencil in my school bag.', source: '原创学习卡', url: '', published: true },
+  { id: 'demo-en-2', subject: '英语', type: 'exercise', title: 'Read and choose', taskId: null, content: 'Choose the right word.\n1. I have a (book / red).\n2. This is my (pencil / happy).\n3. The ruler is (long / sing).', source: '原创练习', url: '', published: true },
+  { id: 'demo-sh-1', subject: '综合', type: 'link', title: '沪学习官方平台', taskId: null, content: '正版数字课本、点读与同步练习需在沪学习官方平台或 App 内使用。', source: '沪学习官方网站', url: 'https://www.diyiedu.com/', published: false }
+];
 const state = {
   tasks: JSON.parse(localStorage.getItem('koala-demo-tasks') || 'null') || initialTasks,
   rewards: JSON.parse(localStorage.getItem('koala-demo-rewards') || 'null') || initialRewards,
@@ -19,6 +28,9 @@ const state = {
   diamonds: Number(localStorage.getItem('koala-demo-diamonds') || 0),
   starsPerDiamond: Number(localStorage.getItem('koala-demo-stars-per-diamond') || 10),
   diamondExchanges: JSON.parse(localStorage.getItem('koala-demo-diamond-exchanges') || 'null') || [],
+  learningMaterials: JSON.parse(localStorage.getItem('koala-demo-learning-materials') || 'null') || initialLearningMaterials,
+  learningSubject: '全部',
+  editingMaterialId: null,
   parentUnlocked: false,
   editing: null,
   pendingPhotoTask: null,
@@ -200,6 +212,22 @@ function taskArt(task, compact = false) {
   const type = taskVisualType(task);
   return `<span class="task-art task-art--${type}${compact ? ' task-art--compact' : ''}" aria-hidden="true">${taskIllustrations[type]}</span>`;
 }
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
+}
+function taskSubject(task) {
+  const text = `${task.name || ''}${task.group || ''}`;
+  if (/数学|口算|计算|应用题/.test(text)) return '数学';
+  if (/英语|单词|字母|口语/.test(text)) return '英语';
+  if (/语文|阅读|写字|背诵|古诗|作文/.test(text)) return '语文';
+  return '';
+}
+function taskLearningKey(task) { return task.templateTaskId || task.id; }
+function taskLearningMaterials(task) {
+  const key = taskLearningKey(task);
+  return state.learningMaterials.filter(material => material.published && material.taskId && sameId(material.taskId, key));
+}
+function materialTypeLabel(type) { return ({ exercise: '练习题', note: '知识卡', link: '网络资料' })[type] || '学习资料'; }
 
 function save() {
   if (state.cloudMode) return;
@@ -209,6 +237,7 @@ function save() {
   localStorage.setItem('koala-demo-diamonds', String(state.diamonds));
   localStorage.setItem('koala-demo-stars-per-diamond', String(state.starsPerDiamond));
   localStorage.setItem('koala-demo-diamond-exchanges', JSON.stringify(state.diamondExchanges));
+  localStorage.setItem('koala-demo-learning-materials', JSON.stringify(state.learningMaterials));
 }
 function statusText(task) {
   if (task.status === 'approved') return '家长已确认';
@@ -219,9 +248,13 @@ function renderTasks() {
   $('#taskGroups').innerHTML = getTaskGroups().map(group => {
     const tasks = state.tasks.filter(t => t.group === group);
     if (!tasks.length) return '';
-    return `<section class="task-group"><div class="task-group__title"><div><span>${groupIcons[group] || '🪐'}</span><h3>${group}</h3></div><span>${tasks.length} 项</span></div>${tasks.map(task => `<div class="task-item is-${task.status}" data-task-id="${task.id}">${taskArt(task)}<button class="task-item__check" type="button" aria-label="提交${task.name}">${task.status === 'approved' ? '✓' : task.status === 'submitted' ? '…' : ''}</button><div class="task-item__content"><strong>${task.name}</strong><span>${statusText(task)}</span></div><span class="task-item__stars">⭐ ${task.stars}</span></div>`).join('')}</section>`;
+    return `<section class="task-group"><div class="task-group__title"><div><span>${groupIcons[group] || '🪐'}</span><h3>${escapeHtml(group)}</h3></div><span>${tasks.length} 项</span></div>${tasks.map(task => {
+      const materials = taskLearningMaterials(task);
+      return `<div class="task-item is-${task.status}" data-task-id="${task.id}">${taskArt(task)}<button class="task-item__check" type="button" aria-label="提交${escapeHtml(task.name)}">${task.status === 'approved' ? '✓' : task.status === 'submitted' ? '…' : ''}</button><div class="task-item__content"><strong>${escapeHtml(task.name)}</strong><span>${statusText(task)}</span>${materials.length ? `<button class="task-learning-link" type="button" data-open-learning="${task.id}">📘 查看 ${materials.length} 份题目与资料</button>` : ''}</div><span class="task-item__stars">⭐ ${task.stars}</span></div>`;
+    }).join('')}</section>`;
   }).join('');
   $$('.task-item__check').forEach(button => button.addEventListener('click', handleTaskSubmit));
+  $$('[data-open-learning]').forEach(button => button.onclick = () => openLearningViewer(button.dataset.openLearning));
   renderSummary();
 }
 function renderRewards() {
@@ -264,6 +297,125 @@ function renderManageLists() {
   $$('[data-edit-task]').forEach(button => button.onclick = () => openEditor('task', button.dataset.editTask));
   $$('[data-quick-publish]').forEach(button => button.onclick = () => openQuickPublishTask(button.dataset.quickPublish));
   $$('[data-edit-reward]').forEach(button => button.onclick = () => openEditor('reward', button.dataset.editReward));
+}
+function renderLearningMaterials() {
+  $$('[data-learning-subject]').forEach(button => button.classList.toggle('is-active', button.dataset.learningSubject === state.learningSubject));
+  const materials = state.learningMaterials.filter(material => state.learningSubject === '全部' || material.subject === state.learningSubject);
+  $('#learningMaterialList').innerHTML = materials.length ? materials.map(material => {
+    const task = material.taskId ? findById(getManagedTasks(), material.taskId) : null;
+    return `<article class="learning-material-card"><div class="learning-material-card__subject">${material.subject === '语文' ? '语' : material.subject === '数学' ? '数' : material.subject === '英语' ? '英' : '资'}</div><div class="learning-material-card__copy"><div><span class="material-type">${materialTypeLabel(material.type)}</span><span class="material-status ${material.published ? 'is-published' : ''}">${material.published ? '已发布' : '仅家长可见'}</span></div><strong>${escapeHtml(material.title)}</strong><p>${escapeHtml(material.content).replaceAll('\n', '<br>')}</p><small>来源：${escapeHtml(material.source || '家长自建')} · ${task ? `关联“${escapeHtml(task.name)}”` : '未关联任务'}</small></div><button class="edit" type="button" data-edit-material="${material.id}">编辑</button></article>`;
+  }).join('') : '<div class="demo-note"><strong>这个学科还没有资料</strong><p>可以新增原创题目、知识卡或公开网页链接。</p></div>';
+  $$('[data-edit-material]').forEach(button => button.onclick = () => openLearningEditor(button.dataset.editMaterial));
+}
+function openLearningViewer(taskId) {
+  const task = findById(state.tasks, taskId);
+  if (!task) return showToast('没有找到这个任务');
+  const materials = taskLearningMaterials(task);
+  if (!materials.length) return showToast('家长还没有发布学习资料');
+  $('#learningViewerSubject').textContent = taskSubject(task) || '任务学习资料';
+  $('#learningViewerTitle').textContent = task.name;
+  const container = $('#learningViewerContent');
+  container.replaceChildren();
+  materials.forEach((material, index) => {
+    const card = document.createElement('article');
+    card.className = 'learning-viewer-card';
+    const eyebrow = document.createElement('span');
+    eyebrow.className = 'eyebrow';
+    eyebrow.textContent = `${index + 1}. ${materialTypeLabel(material.type)} · ${material.source || '家长自建'}`;
+    const title = document.createElement('h3');
+    title.textContent = material.title;
+    const content = document.createElement('div');
+    content.className = 'learning-viewer-card__content';
+    content.textContent = material.content;
+    card.append(eyebrow, title, content);
+    if (material.url) {
+      const link = document.createElement('a');
+      link.className = 'secondary-button learning-source-link';
+      link.href = material.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = '打开官方或公开来源 ↗';
+      card.append(link);
+    }
+    container.append(card);
+  });
+  showDialogAtTop($('#learningViewerDialog'));
+}
+function openLearningEditor(id = null) {
+  state.editingMaterialId = id;
+  const material = id ? findById(state.learningMaterials, id) : null;
+  $('#learningEditorEyebrow').textContent = id ? '编辑' : '新增';
+  $('#learningEditorTitle').textContent = id ? '编辑学习资料' : '新增学习资料';
+  $('#learningSubject').value = material?.subject || (state.learningSubject === '全部' ? '语文' : state.learningSubject);
+  $('#learningType').value = material?.type || 'exercise';
+  $('#learningTitle').value = material?.title || '';
+  $('#learningContent').value = material?.content || '';
+  $('#learningSource').value = material?.source || '家长自建';
+  $('#learningUrl').value = material?.url || '';
+  $('#learningPublished').checked = material?.published ?? true;
+  $('#learningTask').innerHTML = '<option value="">暂不关联任务</option>' + getManagedTasks().map(task => `<option value="${task.id}">${escapeHtml(task.name)} · ${escapeHtml(task.group)}</option>`).join('');
+  $('#learningTask').value = material?.taskId || '';
+  $('#learningDeleteArea').hidden = !id;
+  showDialogAtTop($('#learningEditorDialog'));
+}
+async function saveLearningMaterial() {
+  const id = state.editingMaterialId;
+  const title = $('#learningTitle').value.trim();
+  const content = $('#learningContent').value.trim();
+  const type = $('#learningType').value;
+  const url = $('#learningUrl').value.trim();
+  if (!title) return showToast('请填写资料标题', 'error');
+  if (!content) return showToast('请填写题目或资料内容', 'error');
+  if (type === 'link' && !url) return showToast('网络资料需要填写公开网页链接', 'error');
+  if (url) {
+    try { const parsed = new URL(url); if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('invalid'); }
+    catch { return showToast('请输入正确的 http 或 https 网页链接', 'error'); }
+  }
+  const material = {
+    id,
+    subject: $('#learningSubject').value,
+    type,
+    title,
+    taskId: $('#learningTask').value || null,
+    content,
+    source: $('#learningSource').value.trim() || '家长自建',
+    url,
+    published: $('#learningPublished').checked,
+  };
+  const button = $('#saveLearningMaterial');
+  button.disabled = true;
+  try {
+    if (state.cloudMode) {
+      await window.KoalaCloud.saveLearningMaterial(material);
+      $('#learningEditorDialog').close();
+      await loadCloudData();
+    } else {
+      const existing = id ? findById(state.learningMaterials, id) : null;
+      if (existing) Object.assign(existing, material);
+      else state.learningMaterials.push({ ...material, id: `demo-material-${Date.now()}` });
+      $('#learningEditorDialog').close();
+      renderAll();
+    }
+    showToast('学习资料已保存', 'success');
+  } catch (error) { showToast(cloudErrorMessage(error), 'error'); }
+  finally { button.disabled = false; }
+}
+async function deleteLearningMaterial() {
+  const id = state.editingMaterialId;
+  const material = findById(state.learningMaterials, id);
+  if (!material || !window.confirm(`确定删除“${material.title}”吗？`)) return;
+  try {
+    if (state.cloudMode) {
+      await window.KoalaCloud.deleteLearningMaterial(id);
+      $('#learningEditorDialog').close();
+      await loadCloudData();
+    } else {
+      state.learningMaterials = state.learningMaterials.filter(item => !sameId(item.id, id));
+      $('#learningEditorDialog').close();
+      renderAll();
+    }
+    showToast('学习资料已删除', 'success');
+  } catch (error) { showToast(cloudErrorMessage(error), 'error'); }
 }
 function openQuickPublishTask(taskId) {
   const task = findById(getManagedTasks(), taskId);
@@ -313,7 +465,7 @@ function renderSummary() {
   $('#childExchangePending').textContent = pendingExchanges ? `已有 ${pendingExchanges} 个申请等待家长确认` : '由家长设置兑换比例，确认后才会生效';
   $('#missionSummary').textContent = `今天有 ${state.tasks.length} 个任务，完成后请爸爸妈妈确认。`;
 }
-function renderAll() { renderTasks(); renderRewards(); renderReview(); renderManageLists(); save(); }
+function renderAll() { renderTasks(); renderRewards(); renderReview(); renderManageLists(); renderLearningMaterials(); save(); }
 
 function handleTaskSubmit(event) {
   const task = findById(state.tasks, event.currentTarget.closest('[data-task-id]').dataset.taskId);
@@ -620,6 +772,17 @@ async function loadCloudData() {
     diamondsReceived: exchange.diamonds_received,
     status: exchange.status,
   }));
+  state.learningMaterials = data.learningMaterials.map(material => ({
+    id: material.id,
+    subject: material.subject,
+    type: material.material_type,
+    title: material.title,
+    taskId: material.template_task_id,
+    content: material.content,
+    source: material.source_label,
+    url: material.source_url || '',
+    published: material.published,
+  }));
   renderAll();
   setSyncStatus('已同步', 'online');
 }
@@ -856,6 +1019,13 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   $('#addTaskButton').onclick = () => openEditor('task');
   $('#addRewardButton').onclick = () => openEditor('reward');
+  $('#addLearningMaterial').onclick = () => openLearningEditor();
+  $$('[data-learning-subject]').forEach(button => button.onclick = () => {
+    state.learningSubject = button.dataset.learningSubject;
+    renderLearningMaterials();
+  });
+  $('#saveLearningMaterial').onclick = saveLearningMaterial;
+  $('#deleteLearningMaterial').onclick = deleteLearningMaterial;
   $('#saveEditor').onclick = saveEditor;
   $('#deleteEditor').onclick = deleteEditorTask;
   $('#requestDiamondExchange').onclick = requestDiamondExchange;
