@@ -161,6 +161,15 @@
     if (error) throw error;
     return data;
   }
+  async function publishTemplateTask({ templateTaskId, scheduledDate, days }) {
+    const { data, error } = await requireClient().rpc('publish_template_task', {
+      p_template_task_id: templateTaskId,
+      p_scheduled_date: scheduledDate,
+      p_days: days,
+    });
+    if (error) throw error;
+    return data;
+  }
   async function saveTemplateTask(task) {
     const payload = {
       family_id: context.family_id,
@@ -263,7 +272,7 @@
   window.KoalaCloud = {
     isConfigured, init, getSession, onAuthStateChange, signUpParent, signInParent, signInChild, signOut,
     getContext, createFamily, acceptInvite, createChildLogin, inviteParent, loadAppData, uploadEvidence,
-    submitMission, reviewMission, requestRedemption, publishTemplate, saveTemplateTask, saveReward,
+    submitMission, reviewMission, requestRedemption, publishTemplate, publishTemplateTask, saveTemplateTask, saveReward,
     getEvidenceUrl, enablePushNotifications, disablePushNotifications, subscribe,
   };
 })();

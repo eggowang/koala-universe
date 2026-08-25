@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=10">
+  <link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body>
   <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
@@ -114,7 +114,7 @@
 
       <section id="parentView" class="view" aria-labelledby="parentTitle">
         <div class="parent-heading">
-          <div><span class="eyebrow">家长控制台 · Demo</span><h1 id="parentTitle">晚上好，考拉家长</h1></div>
+          <div><span id="parentModeLabel" class="eyebrow">家长控制台 · 本机 Demo</span><h1 id="parentTitle">晚上好，考拉家长</h1></div>
           <button id="publishButton" class="primary-button" type="button">发布任务</button>
         </div>
 
@@ -137,7 +137,7 @@
         </div>
 
         <div id="tasksPanel" class="parent-panel">
-          <div class="panel-title"><div><h2>默认时间段与任务</h2><p>每个时间段、任务和星星都可以单独修改。</p></div><button id="addTaskButton" class="secondary-button" type="button">＋ 新增任务</button></div>
+          <div class="panel-title"><div><h2>默认时间段与任务</h2><p>点击任务卡片可快速选择日期发布；“编辑”用于修改模板。</p></div><button id="addTaskButton" class="secondary-button" type="button">＋ 新增任务</button></div>
           <div id="manageTaskList" class="manage-list"></div>
         </div>
 
@@ -195,6 +195,24 @@
       <fieldset><legend>遇到已有任务时</legend><label class="radio-card"><input type="radio" name="collision" value="append" checked><span><strong>追加任务</strong><small>保留已安排内容</small></span></label><label class="radio-card"><input type="radio" name="collision" value="replace"><span><strong>替换任务</strong><small>覆盖所选日期内容</small></span></label></fieldset>
       <div class="publish-preview">将向 <strong id="publishPreviewDays">5 天</strong>发布“上学日模板”，发布前仍可逐日修改。</div>
       <button id="confirmPublish" class="primary-button primary-button--wide" type="button">确认发布</button>
+    </form>
+  </dialog>
+
+  <dialog id="quickPublishDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="eyebrow">单项快速发布</span><h2 id="quickPublishTaskName">发布任务</h2>
+      <p>默认发布到今天，也可以选择日期并连续发布几天。</p>
+      <div class="quick-date-actions" aria-label="快捷日期">
+        <button type="button" data-quick-date-offset="0">今天</button>
+        <button type="button" data-quick-date-offset="1">明天</button>
+      </div>
+      <div class="form-grid">
+        <label><span>开始日期</span><input id="quickPublishDate" type="date"></label>
+        <label><span>连续天数</span><input id="quickPublishDays" type="number" min="1" max="30" value="1"></label>
+      </div>
+      <p id="quickPublishMessage" class="auth-message" role="status"></p>
+      <button id="confirmQuickPublish" class="primary-button primary-button--wide" type="button">发布这个任务</button>
     </form>
   </dialog>
 
@@ -278,7 +296,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
   <script src="config.js"></script>
-  <script src="cloud.js?v=10"></script>
-  <script src="app.js?v=10" defer></script>
+  <script src="cloud.js?v=12"></script>
+  <script src="app.js?v=12" defer></script>
 </body>
 </html>

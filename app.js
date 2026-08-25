@@ -27,7 +27,8 @@ const state = {
   templateTasks: [],
   realtimeRefreshTimer: null,
   registerMode: false,
-  openParentAfterPinSetup: false
+  openParentAfterPinSetup: false,
+  quickPublishTaskId: null
 };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -174,10 +175,42 @@ function renderReview() {
   renderSummary();
 }
 function renderManageLists() {
-  $('#manageTaskList').innerHTML = getManagedTasks().map(task => `<article class="manage-item"><div class="manage-item__main">${taskArt(task, true)}<div><strong>${task.name}</strong><span>${task.group} · ⭐ ${task.stars} · ${task.photo ? '必须照片' : '无需照片'}</span></div></div><button class="edit" type="button" data-edit-task="${task.id}">编辑</button></article>`).join('');
+  $('#manageTaskList').innerHTML = getManagedTasks().map(task => `<article class="manage-item"><button class="manage-item__main manage-item__main--publish" type="button" data-quick-publish="${task.id}" aria-label="选择${task.name}的发布日期">${taskArt(task, true)}<div><strong>${task.name}</strong><span>${task.group} · ⭐ ${task.stars} · ${task.photo ? '必须照片' : '无需照片'}</span></div></button><button class="edit" type="button" data-edit-task="${task.id}">编辑</button></article>`).join('');
   $('#manageRewardList').innerHTML = state.rewards.map(reward => `<article class="manage-item"><div><strong>${reward.icon} ${reward.name}</strong><span>需要 ⭐ ${reward.cost} · 已启用</span></div><button class="edit" type="button" data-edit-reward="${reward.id}">编辑</button></article>`).join('');
   $$('[data-edit-task]').forEach(button => button.onclick = () => openEditor('task', button.dataset.editTask));
+  $$('[data-quick-publish]').forEach(button => button.onclick = () => openQuickPublishTask(button.dataset.quickPublish));
   $$('[data-edit-reward]').forEach(button => button.onclick = () => openEditor('reward', button.dataset.editReward));
+}
+function openQuickPublishTask(taskId) {
+  const task = findById(getManagedTasks(), taskId);
+  if (!task) return showToast('没有找到这个任务');
+  if (!state.cloudMode) return showToast('当前是本机 Demo，无法同步到孩子设备');
+  if (state.context?.member_role !== 'parent') return showToast('只有家长可以发布任务');
+  state.quickPublishTaskId = task.id;
+  $('#quickPublishTaskName').textContent = task.name;
+  $('#quickPublishDate').value = localIsoDate();
+  $('#quickPublishDays').value = 1;
+  setAuthMessage('#quickPublishMessage', '将发布到今天。');
+  $('#quickPublishDialog').showModal();
+}
+async function confirmQuickPublish() {
+  const task = findById(getManagedTasks(), state.quickPublishTaskId);
+  if (!task) return setAuthMessage('#quickPublishMessage', '没有找到这个任务', 'error');
+  const scheduledDate = $('#quickPublishDate').value;
+  const days = Number($('#quickPublishDays').value || 1);
+  if (!scheduledDate) return setAuthMessage('#quickPublishMessage', '请选择开始日期', 'error');
+  if (!Number.isInteger(days) || days < 1 || days > 30) return setAuthMessage('#quickPublishMessage', '连续天数应为 1 到 30 天', 'error');
+  const button = $('#confirmQuickPublish');
+  button.disabled = true;
+  setAuthMessage('#quickPublishMessage', '正在发布…');
+  try {
+    const created = await window.KoalaCloud.publishTemplateTask({ templateTaskId: task.id, scheduledDate, days });
+    if (!created) return setAuthMessage('#quickPublishMessage', '所选日期已经发布过这个任务', 'error');
+    $('#quickPublishDialog').close();
+    await loadCloudData();
+    showToast(`“${task.name}”已发布 ${created} 天`);
+  } catch (error) { setAuthMessage('#quickPublishMessage', cloudErrorMessage(error), 'error'); }
+  finally { button.disabled = false; }
 }
 function renderSummary() {
   const pending = state.tasks.filter(t => t.status === 'submitted').length;
@@ -426,6 +459,7 @@ async function activateCloudSession() {
   }
   state.cloudMode = true;
   state.context = context;
+  $('#parentModeLabel').textContent = '家长控制台 · 云端同步';
   $('#signOutButton').hidden = false;
   $('#accountStatus').textContent = `${context.member_role === 'parent' ? '家长' : '孩子'}账号 · ${context.family_name}`;
   $('#childSettingsValue').textContent = `${context.child_nickname || '孩子'} · 大名仅家长可见`;
@@ -550,7 +584,7 @@ document.addEventListener('DOMContentLoaded', () => {
       await activateCloudSession();
     } catch (error) { setAuthMessage('#childAuthMessage', cloudErrorMessage(error), 'error'); }
   };
-  $('#useDemoMode').onclick = () => { $('#authGate').hidden = true; state.cloudMode = false; setSyncStatus('Demo 本机', 'demo'); };
+  $('#useDemoMode').onclick = () => { $('#authGate').hidden = true; state.cloudMode = false; $('#parentModeLabel').textContent = '家长控制台 · 本机 Demo'; setSyncStatus('Demo 本机', 'demo'); };
   $('#createFamilyButton').onclick = async () => {
     const childPin = $('#setupChildPin').value;
     const childPinConfirm = $('#setupChildPinConfirm').value;
@@ -593,6 +627,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
   $('#publishButton').onclick = () => $('#publishDialog').showModal();
+  $$('[data-quick-date-offset]').forEach(button => button.onclick = () => {
+    const date = new Date();
+    date.setDate(date.getDate() + Number(button.dataset.quickDateOffset));
+    $('#quickPublishDate').value = localIsoDate(date);
+    setAuthMessage('#quickPublishMessage', button.dataset.quickDateOffset === '0' ? '将发布到今天。' : '将从明天开始发布。');
+  });
+  $('#confirmQuickPublish').onclick = confirmQuickPublish;
   $('#publishDays').oninput = e => $('#publishPreviewDays').textContent = `${e.target.value || 1} 天`;
   $('#confirmPublish').onclick = async () => {
     const days = $('#publishRange').value === '仅一天' ? 1 : Number($('#publishDays').value || 1);
