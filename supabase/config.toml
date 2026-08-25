@@ -1,5 +1,26 @@
 project_id = "koala-universe"
 
+[auth]
+site_url = "https://eggowang.github.io/koala-universe/"
+additional_redirect_urls = [
+  "https://eggowang.github.io/koala-universe/**",
+  "http://127.0.0.1:4173/**",
+  "http://localhost:4173/**",
+]
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = true
+secure_password_change = false
+max_frequency = "1m0s"
+otp_length = 8
+otp_expiry = 3600
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
 [functions.create-child-login]
 verify_jwt = true
 
