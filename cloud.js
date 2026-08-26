@@ -102,7 +102,10 @@
   async function loadAppData(date) {
     const ctx = context || await getContext();
     if (!ctx) return { context: null };
-    const [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, learningResult, templateResult, sectionResult] = await Promise.all([
+    const answerQuery = ctx.member_role === 'parent'
+      ? requireClient().from('learning_answers').select('*').eq('family_id', ctx.family_id).order('updated_at', { ascending: false })
+      : Promise.resolve({ data: [], error: null });
+    const [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, learningResult, answerResult, templateResult, sectionResult] = await Promise.all([
       requireClient().from('missions').select('*').eq('family_id', ctx.family_id).eq('scheduled_date', date).order('sort_order'),
       requireClient().from('rewards').select('*').eq('family_id', ctx.family_id).eq('active', true).order('sort_order'),
       requireClient().rpc('current_star_balance', { p_child_id: ctx.child_id }),
@@ -110,17 +113,24 @@
       requireClient().from('diamond_exchanges').select('*').eq('family_id', ctx.family_id).eq('status', 'pending').order('requested_at', { ascending: false }),
       requireClient().from('families').select('stars_per_diamond').eq('id', ctx.family_id).single(),
       requireClient().from('learning_materials').select('*').eq('family_id', ctx.family_id).eq('active', true).order('sort_order'),
+      answerQuery,
       requireClient().from('task_templates').select('*').eq('family_id', ctx.family_id).eq('active', true).order('created_at'),
       requireClient().from('template_sections').select('*').eq('family_id', ctx.family_id).order('sort_order'),
     ]);
-    for (const result of [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, learningResult, templateResult, sectionResult]) if (result.error) throw result.error;
+    for (const result of [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, learningResult, answerResult, templateResult, sectionResult]) if (result.error) throw result.error;
     let learningMaterials = learningResult.data || [];
+    let learningAnswers = answerResult.data || [];
     if (ctx.member_role === 'parent' && !learningMaterials.length) {
       const seedResult = await requireClient().rpc('seed_default_learning_materials');
       if (seedResult.error) throw seedResult.error;
       const refreshedLearning = await requireClient().from('learning_materials').select('*').eq('family_id', ctx.family_id).eq('active', true).order('sort_order');
       if (refreshedLearning.error) throw refreshedLearning.error;
       learningMaterials = refreshedLearning.data || [];
+      const seedAnswers = await requireClient().rpc('seed_default_learning_answers');
+      if (seedAnswers.error) throw seedAnswers.error;
+      const refreshedAnswers = await requireClient().from('learning_answers').select('*').eq('family_id', ctx.family_id).order('updated_at', { ascending: false });
+      if (refreshedAnswers.error) throw refreshedAnswers.error;
+      learningAnswers = refreshedAnswers.data || [];
     }
     const sectionIds = (sectionResult.data || []).map((item) => item.id);
     let templateTasks = [];
@@ -138,6 +148,7 @@
       starsPerDiamond: Number(familyResult.data?.stars_per_diamond || 10),
       diamondExchanges: exchangeResult.data || [],
       learningMaterials,
+      learningAnswers,
       templates: templateResult.data || [],
       sections: sectionResult.data || [],
       templateTasks,
@@ -234,6 +245,8 @@
     if (error) throw error;
   }
   async function saveLearningMaterial(material) {
+    const { data: userData, error: userError } = await requireClient().auth.getUser();
+    if (userError || !userData.user) throw userError || new Error('AUTH_REQUIRED');
     const payload = {
       family_id: context.family_id,
       template_task_id: material.taskId || null,
@@ -249,16 +262,32 @@
       active: true,
       updated_at: new Date().toISOString(),
     };
+    let materialId = material.id;
     if (material.id) {
       const { error } = await requireClient().from('learning_materials').update(payload)
         .eq('id', material.id).eq('family_id', context.family_id);
       if (error) throw error;
-      return;
+    } else {
+      const { data, error } = await requireClient().from('learning_materials')
+        .insert({ ...payload, created_by: userData.user.id }).select('id').single();
+      if (error) throw error;
+      materialId = data.id;
     }
-    const { data: userData, error: userError } = await requireClient().auth.getUser();
-    if (userError || !userData.user) throw userError || new Error('AUTH_REQUIRED');
-    const { error } = await requireClient().from('learning_materials').insert({ ...payload, created_by: userData.user.id });
-    if (error) throw error;
+    if (material.answer?.trim()) {
+      const answerPayload = {
+        family_id: context.family_id,
+        material_id: materialId,
+        answer_content: material.answer.trim(),
+        created_by: userData.user.id,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await requireClient().from('learning_answers').upsert(answerPayload, { onConflict: 'material_id' });
+      if (error) throw error;
+    } else if (material.id) {
+      const { error } = await requireClient().from('learning_answers').delete()
+        .eq('material_id', material.id).eq('family_id', context.family_id);
+      if (error) throw error;
+    }
   }
   async function deleteLearningMaterial(materialId) {
     const { error } = await requireClient().from('learning_materials').delete()
@@ -345,6 +374,7 @@
       .on('postgres_changes', { event: '*', schema: 'public', table: 'diamond_exchanges', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'diamond_ledger', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'learning_materials', filter: `family_id=eq.${context.family_id}` }, onChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'learning_answers', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'families', filter: `id=eq.${context.family_id}` }, onChange)
       .subscribe();
     return realtimeChannel;

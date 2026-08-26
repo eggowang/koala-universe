@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=22">
+  <link rel="stylesheet" href="styles.css?v=24">
 </head>
 <body>
   <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
@@ -153,6 +153,10 @@
 
         <div id="learningPanel" class="parent-panel">
           <div class="panel-title"><div><h2>上海二年级学习资料库</h2><p>家长管理全部资料；孩子只能查看已发布并关联到任务的内容。</p></div><div class="learning-panel-actions"><button id="openAiAssistant" class="ai-button" type="button">✨ AI 资料助手</button><button id="addLearningMaterial" class="secondary-button" type="button">＋ 新增资料</button></div></div>
+          <div class="learning-library-tabs" role="tablist" aria-label="学习资料库类型">
+            <button class="is-active" type="button" data-learning-library="materials">📘 题目与资料</button>
+            <button type="button" data-learning-library="answers">🔐 家长答案库</button>
+          </div>
           <div class="subject-filters" role="group" aria-label="按学科筛选">
             <button class="is-active" type="button" data-learning-subject="全部">全部</button>
             <button type="button" data-learning-subject="语文">语文</button>
@@ -315,8 +319,9 @@
 
       <section id="aiResult" class="ai-result-card" hidden aria-labelledby="aiResultTitle">
         <div class="ai-section-heading"><div><span class="eyebrow">生成结果</span><strong id="aiResultTitle">请家长先检查内容</strong></div></div>
-        <div id="aiResultContent" class="ai-result-content"></div>
-        <p>AI 可能出错，请核对题目和答案。下一步会进入资料编辑页，默认保持“仅家长可见”。</p>
+        <div class="ai-result-section"><strong>📘 孩子题目 / 资料</strong><div id="aiResultContent" class="ai-result-content"></div></div>
+        <div id="aiResultAnswerSection" class="ai-result-section ai-result-answer" hidden><strong>🔐 家长参考答案</strong><div id="aiResultAnswer" class="ai-result-content"></div></div>
+        <p>AI 可能出错，请核对题目和答案。答案会进入家长答案库，孩子端不会显示。</p>
         <button id="useAiResult" class="secondary-button primary-button--wide" type="button">转为学习资料并继续编辑</button>
       </section>
     </form>
@@ -333,6 +338,7 @@
       <label class="field"><span>标题</span><input id="learningTitle" type="text" maxlength="60" placeholder="例如：100 以内加减法练习"></label>
       <label class="field"><span>关联任务</span><select id="learningTask"><option value="">暂不关联任务</option></select></label>
       <label class="field"><span>题目或资料内容</span><textarea id="learningContent" rows="7" maxlength="3000" placeholder="可输入题目、阅读材料、学习提示等"></textarea></label>
+      <label class="field answer-editor-field"><span>家长参考答案（选填）</span><textarea id="learningAnswer" rows="5" maxlength="3000" placeholder="答案、解题步骤或家长讲解，只会显示在家长答案库"></textarea><small>🔐 答案单独保存，孩子账号无法读取。</small></label>
       <div class="form-grid">
         <label><span>来源名称</span><input id="learningSource" type="text" maxlength="50" placeholder="例如：家长自建"></label>
         <label><span>公开网页链接（选填）</span><input id="learningUrl" type="url" maxlength="500" placeholder="https://..."></label>
@@ -412,7 +418,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastIcon" class="toast__icon" aria-hidden="true">✓</span><span id="toastMessage"></span></div>
   <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
   <script src="config.js"></script>
-  <script src="cloud.js?v=22"></script>
-  <script src="app.js?v=22" defer></script>
+  <script src="cloud.js?v=24"></script>
+  <script src="app.js?v=24" defer></script>
 </body>
 </html>

@@ -14,11 +14,11 @@ const initialRewards = [
 ];
 const initialLearningMaterials = [
   { id: 'demo-cn-1', subject: '语文', type: 'note', title: '看图说话三步法', taskId: 2, content: '第一步：看清时间、地点和人物。\n第二步：按顺序说清楚发生了什么。\n第三步：补充人物的动作、表情和感受。', source: '家长自建示例', url: '', published: true },
-  { id: 'demo-cn-2', subject: '语文', type: 'exercise', title: '词语搭配小练习', taskId: 2, content: '1. 在括号里填上合适的词：一（　）小河、一（　）铅笔。\n2. 用“认真”写一句完整的话。\n3. 找出“明亮”的近义词。', source: '原创练习', url: '', published: true },
-  { id: 'demo-math-1', subject: '数学', type: 'exercise', title: '100 以内加减法', taskId: 3, content: '1. 36 + 27 = ______\n2. 82 - 45 = ______\n3. 48 + 19 - 25 = ______\n4. 比 60 少 18 的数是 ______。', source: '原创练习', url: '', published: true },
-  { id: 'demo-math-2', subject: '数学', type: 'exercise', title: '生活应用题', taskId: 3, content: '文具盒里有 24 支铅笔，借给同学 7 支，后来又放进 9 支。现在文具盒里有多少支铅笔？请写出算式和答案。', source: '原创练习', url: '', published: true },
+  { id: 'demo-cn-2', subject: '语文', type: 'exercise', title: '词语搭配小练习', taskId: 2, content: '1. 在括号里填上合适的词：一（　）小河、一（　）铅笔。\n2. 用“认真”写一句完整的话。\n3. 找出“明亮”的近义词。', answer: '1. 一条小河、一支铅笔。\n2. 示例：我认真地完成了今天的作业。\n3. 光亮（答案合理即可）。', source: '原创练习', url: '', published: true },
+  { id: 'demo-math-1', subject: '数学', type: 'exercise', title: '100 以内加减法', taskId: 3, content: '1. 36 + 27 = ______\n2. 82 - 45 = ______\n3. 48 + 19 - 25 = ______\n4. 比 60 少 18 的数是 ______。', answer: '1. 63\n2. 37\n3. 42\n4. 42', source: '原创练习', url: '', published: true },
+  { id: 'demo-math-2', subject: '数学', type: 'exercise', title: '生活应用题', taskId: 3, content: '文具盒里有 24 支铅笔，借给同学 7 支，后来又放进 9 支。现在文具盒里有多少支铅笔？请写出算式和答案。', answer: '24 - 7 + 9 = 26（支）\n答：现在文具盒里有 26 支铅笔。', source: '原创练习', url: '', published: true },
   { id: 'demo-en-1', subject: '英语', type: 'note', title: 'My school bag 词汇卡', taskId: null, content: 'school bag — 书包\nbook — 书\npencil — 铅笔\nruler — 尺子\n句型：I have a pencil in my school bag.', source: '原创学习卡', url: '', published: true },
-  { id: 'demo-en-2', subject: '英语', type: 'exercise', title: 'Read and choose', taskId: null, content: 'Choose the right word.\n1. I have a (book / red).\n2. This is my (pencil / happy).\n3. The ruler is (long / sing).', source: '原创练习', url: '', published: true },
+  { id: 'demo-en-2', subject: '英语', type: 'exercise', title: 'Read and choose', taskId: null, content: 'Choose the right word.\n1. I have a (book / red).\n2. This is my (pencil / happy).\n3. The ruler is (long / sing).', answer: '1. book\n2. pencil\n3. long', source: '原创练习', url: '', published: true },
   { id: 'demo-sh-1', subject: '综合', type: 'link', title: '沪学习官方平台', taskId: null, content: '正版数字课本、点读与同步练习需在沪学习官方平台或 App 内使用。', source: '沪学习官方网站', url: 'https://www.diyiedu.com/', published: false }
 ];
 const state = {
@@ -30,6 +30,7 @@ const state = {
   diamondExchanges: JSON.parse(localStorage.getItem('koala-demo-diamond-exchanges') || 'null') || [],
   learningMaterials: JSON.parse(localStorage.getItem('koala-demo-learning-materials') || 'null') || initialLearningMaterials,
   learningSubject: '全部',
+  learningLibraryMode: 'materials',
   editingMaterialId: null,
   parentUnlocked: false,
   editing: null,
@@ -45,10 +46,15 @@ const state = {
   openParentAfterPinSetup: false,
   quickPublishTaskId: null,
   aiLastResult: '',
+  aiLastAnswer: '',
   aiLastTitle: '',
   aiLastSubject: '',
   aiLastType: 'exercise'
 };
+state.learningMaterials = state.learningMaterials.map(material => ({
+  ...material,
+  answer: material.answer ?? initialLearningMaterials.find(sample => sameId(sample.id, material.id) || sample.title === material.title)?.answer ?? '',
+}));
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const defaultTaskGroups = ['早晨', '放学后', '锻炼', '睡前'];
@@ -306,12 +312,20 @@ function renderManageLists() {
   $$('[data-edit-reward]').forEach(button => button.onclick = () => openEditor('reward', button.dataset.editReward));
 }
 function renderLearningMaterials() {
+  $$('[data-learning-library]').forEach(button => button.classList.toggle('is-active', button.dataset.learningLibrary === state.learningLibraryMode));
   $$('[data-learning-subject]').forEach(button => button.classList.toggle('is-active', button.dataset.learningSubject === state.learningSubject));
-  const materials = state.learningMaterials.filter(material => state.learningSubject === '全部' || material.subject === state.learningSubject);
+  const materials = state.learningMaterials.filter(material =>
+    (state.learningSubject === '全部' || material.subject === state.learningSubject)
+    && (state.learningLibraryMode !== 'answers' || material.answer?.trim())
+  );
   $('#learningMaterialList').innerHTML = materials.length ? materials.map(material => {
     const task = material.taskId ? findById(getManagedTasks(), material.taskId) : null;
-    return `<article class="learning-material-card"><div class="learning-material-card__subject">${material.subject === '语文' ? '语' : material.subject === '数学' ? '数' : material.subject === '英语' ? '英' : '资'}</div><div class="learning-material-card__copy"><div><span class="material-type">${materialTypeLabel(material.type)}</span><span class="material-status ${material.published ? 'is-published' : ''}">${material.published ? '已发布' : '仅家长可见'}</span></div><strong>${escapeHtml(material.title)}</strong><p>${escapeHtml(material.content).replaceAll('\n', '<br>')}</p><small>来源：${escapeHtml(material.source || '家长自建')} · ${task ? `关联“${escapeHtml(task.name)}”` : '未关联任务'}</small></div><button class="edit" type="button" data-edit-material="${material.id}">编辑</button></article>`;
-  }).join('') : '<div class="demo-note"><strong>这个学科还没有资料</strong><p>可以新增原创题目、知识卡或公开网页链接。</p></div>';
+    const showingAnswer = state.learningLibraryMode === 'answers';
+    const preview = showingAnswer ? material.answer : material.content;
+    return `<article class="learning-material-card ${showingAnswer ? 'is-answer-card' : ''}"><div class="learning-material-card__subject">${showingAnswer ? '答' : material.subject === '语文' ? '语' : material.subject === '数学' ? '数' : material.subject === '英语' ? '英' : '资'}</div><div class="learning-material-card__copy"><div><span class="material-type">${showingAnswer ? '家长答案' : materialTypeLabel(material.type)}</span>${showingAnswer ? '<span class="material-status answer-private-badge">仅家长可见</span>' : `<span class="material-status ${material.published ? 'is-published' : ''}">${material.published ? '已发布' : '仅家长可见'}</span>${material.answer?.trim() ? '<span class="material-status has-answer-badge">有答案</span>' : ''}`}</div><strong>${escapeHtml(material.title)}</strong><p>${escapeHtml(preview || '').replaceAll('\n', '<br>')}</p><small>${showingAnswer ? `对应${material.subject}${materialTypeLabel(material.type)}` : `来源：${escapeHtml(material.source || '家长自建')} · ${task ? `关联“${escapeHtml(task.name)}”` : '未关联任务'}`}</small></div><button class="edit" type="button" data-edit-material="${material.id}">编辑</button></article>`;
+  }).join('') : state.learningLibraryMode === 'answers'
+    ? '<div class="demo-note"><strong>这个学科还没有答案</strong><p>AI 生成练习或家长编辑资料时，可以把答案单独保存到这里。</p></div>'
+    : '<div class="demo-note"><strong>这个学科还没有资料</strong><p>可以新增原创题目、知识卡或公开网页链接。</p></div>';
   $$('[data-edit-material]').forEach(button => button.onclick = () => openLearningEditor(button.dataset.editMaterial));
 }
 function openLearningViewer(taskId) {
@@ -357,6 +371,7 @@ function openLearningEditor(id = null) {
   $('#learningType').value = material?.type || 'exercise';
   $('#learningTitle').value = material?.title || '';
   $('#learningContent').value = material?.content || '';
+  $('#learningAnswer').value = material?.answer || '';
   $('#learningSource').value = material?.source || '家长自建';
   $('#learningUrl').value = material?.url || '';
   $('#learningPublished').checked = material?.published ?? true;
@@ -375,6 +390,8 @@ function openAiAssistant() {
   if (state.aiLastResult) {
     $('#aiResultTitle').textContent = state.aiLastTitle;
     $('#aiResultContent').textContent = state.aiLastResult;
+    $('#aiResultAnswer').textContent = state.aiLastAnswer;
+    $('#aiResultAnswerSection').hidden = !state.aiLastAnswer;
     $('#aiResult').hidden = false;
   } else $('#aiResult').hidden = true;
   setAuthMessage('#aiAssistantStatus', '接口信息由家长填写；生成内容先预览，再决定是否保存。');
@@ -407,13 +424,23 @@ function aiMaterialParts(text, subject) {
   const rawText = String(text || '').trim();
   const readableText = !rawText.includes('\n') && rawText.includes('\\n') ? rawText.replace(/\\n/g, '\n') : rawText;
   const lines = readableText.split(/\r?\n/);
-  const titleMatch = lines[0]?.match(/^\s*(?:标题|题目)\s*[：:]\s*(.+)$/);
+  const titleMatch = lines[0]?.match(/^\s*(?:#{1,3}\s*)?(?:\*\*)?(?:标题|题目)\s*[：:]\s*(.+?)(?:\*\*)?\s*$/);
   const title = (titleMatch?.[1] || `${subject} AI 学习资料`).replace(/^[《“"]|[》”"]$/g, '').trim().slice(0, 60);
-  const content = (titleMatch ? lines.slice(1).join('\n').trim() : lines.join('\n').trim());
-  return { title, content };
+  const bodyLines = titleMatch ? lines.slice(1) : lines;
+  const answerMarker = /^\s*(?:#{1,3}\s*)?(?:\*\*)?(?:【|\[)?(?:家长参考答案|参考答案|标准答案|答案)(?:】|\])?(?:\*\*)?\s*[：:]?\s*(.*)$/;
+  const answerIndex = bodyLines.findIndex(line => answerMarker.test(line));
+  let contentLines = answerIndex >= 0 ? bodyLines.slice(0, answerIndex) : bodyLines;
+  const answerLines = answerIndex >= 0 ? bodyLines.slice(answerIndex) : [];
+  if (/^\s*(?:#{1,3}\s*)?(?:\*\*)?(?:【|\[)?(?:题目|题目内容|练习题)(?:】|\])?(?:\*\*)?\s*[：:]?\s*$/.test(contentLines[0] || '')) contentLines = contentLines.slice(1);
+  let answer = '';
+  if (answerLines.length) {
+    const firstAnswer = answerLines[0].match(answerMarker)?.[1] || '';
+    answer = [firstAnswer, ...answerLines.slice(1)].join('\n').trim();
+  }
+  return { title, content: contentLines.join('\n').trim(), answer };
 }
 function aiSystemPrompt(subject, type) {
-  return `你是一名严谨的小学学习助手，帮助家长为上海小学二年级学生制作${subject}${type === 'exercise' ? '原创练习题' : '原创知识卡'}。内容应符合儿童理解水平，表达清楚，难度适中，不超纲。不得声称复制教材、题库或付费学习平台的原文。第一行必须写“标题：简短标题”，之后给出完整内容。${type === 'exercise' ? '练习题最后另列“家长参考答案”，答案与题目清楚分开。' : '使用简短分点和例子帮助孩子理解。'}只输出可直接给家长审阅的学习内容。`;
+  return `你是一名严谨的小学学习助手，帮助家长为上海小学二年级学生制作${subject}${type === 'exercise' ? '原创练习题' : '原创知识卡'}。内容应符合儿童理解水平，表达清楚，难度适中，不超纲。不得声称复制教材、题库或付费学习平台的原文。第一行必须写“标题：简短标题”。${type === 'exercise' ? '接着单独写“【题目】”并列出全部题目；最后单独写“【家长参考答案】”并列出对应答案和必要的简短解析。题目区域绝不能出现答案，答案区域也不要重复完整题目。' : '接着写“【题目】”并给出知识卡内容；如果包含自测题，再在最后单独写“【家长参考答案】”，否则不要输出答案区域。'}只输出可直接给家长审阅的学习内容。`;
 }
 function aiUserPrompt(subject, type, request) {
   return `学生范围：上海小学二年级\n学科：${subject}\n资料类型：${type === 'exercise' ? '练习题' : '知识卡'}\n家长要求：${request}`;
@@ -467,13 +494,16 @@ async function generateAiMaterial() {
     if (!result) throw new Error('接口已响应，但没有找到可显示的文字内容，请检查接口格式。');
     const parts = aiMaterialParts(result, subject);
     state.aiLastResult = parts.content;
+    state.aiLastAnswer = parts.answer;
     state.aiLastTitle = parts.title;
     state.aiLastSubject = subject;
     state.aiLastType = type;
     $('#aiResultTitle').textContent = parts.title;
     $('#aiResultContent').textContent = parts.content;
+    $('#aiResultAnswer').textContent = parts.answer;
+    $('#aiResultAnswerSection').hidden = !parts.answer;
     $('#aiResult').hidden = false;
-    setAuthMessage('#aiAssistantStatus', '生成完成。请先检查题目和答案，再转为学习资料。', 'success');
+    setAuthMessage('#aiAssistantStatus', parts.answer ? '生成完成，题目和答案已自动分开。请家长分别检查。' : '生成完成。当前内容没有单独答案，请家长检查。', 'success');
     $('#aiResult').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   } catch (error) {
     const message = error.name === 'AbortError'
@@ -493,16 +523,18 @@ function useAiResultAsMaterial() {
   const subject = state.aiLastSubject || $('#aiSubject').value;
   const type = state.aiLastType || $('#aiMaterialType').value;
   const wasTruncated = state.aiLastResult.length > 3000;
+  const answerWasTruncated = state.aiLastAnswer.length > 3000;
   $('#aiAssistantDialog').close();
   openLearningEditor();
   $('#learningSubject').value = subject;
   $('#learningType').value = type;
   $('#learningTitle').value = state.aiLastTitle || `${subject} AI 学习资料`;
   $('#learningContent').value = state.aiLastResult.slice(0, 3000);
+  $('#learningAnswer').value = state.aiLastAnswer.slice(0, 3000);
   $('#learningSource').value = 'AI 生成（家长审核）';
   $('#learningUrl').value = '';
   $('#learningPublished').checked = false;
-  showToast(wasTruncated ? '内容较长，已截取前 3000 字，请家长继续编辑' : '已转为未发布资料，请家长检查并编辑');
+  showToast(wasTruncated || answerWasTruncated ? '内容较长，已截取前 3000 字，请家长继续编辑' : '题目和答案已分开，默认仅家长可见');
 }
 function setQuickAiPrompt(kind) {
   const subject = $('#aiSubject').value;
@@ -531,6 +563,7 @@ async function saveLearningMaterial() {
   const id = state.editingMaterialId;
   const title = $('#learningTitle').value.trim();
   const content = $('#learningContent').value.trim();
+  const answer = $('#learningAnswer').value.trim();
   const type = $('#learningType').value;
   const url = $('#learningUrl').value.trim();
   if (!title) return showToast('请填写资料标题', 'error');
@@ -547,6 +580,7 @@ async function saveLearningMaterial() {
     title,
     taskId: $('#learningTask').value || null,
     content,
+    answer,
     source: $('#learningSource').value.trim() || '家长自建',
     url,
     published: $('#learningPublished').checked,
@@ -951,6 +985,7 @@ async function loadCloudData() {
     title: material.title,
     taskId: material.template_task_id,
     content: material.content,
+    answer: (data.learningAnswers || []).find(answer => sameId(answer.material_id, material.id))?.answer_content || '',
     source: material.source_label,
     url: material.source_url || '',
     published: material.published,
@@ -1211,6 +1246,10 @@ document.addEventListener('DOMContentLoaded', () => {
   $$('[data-ai-prompt]').forEach(button => button.onclick = () => setQuickAiPrompt(button.dataset.aiPrompt));
   $('#generateAiMaterial').onclick = generateAiMaterial;
   $('#useAiResult').onclick = useAiResultAsMaterial;
+  $$('[data-learning-library]').forEach(button => button.onclick = () => {
+    state.learningLibraryMode = button.dataset.learningLibrary;
+    renderLearningMaterials();
+  });
   $$('[data-learning-subject]').forEach(button => button.onclick = () => {
     state.learningSubject = button.dataset.learningSubject;
     renderLearningMaterials();
