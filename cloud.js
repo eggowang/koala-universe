@@ -105,19 +105,23 @@
     const answerQuery = ctx.member_role === 'parent'
       ? requireClient().from('learning_answers').select('*').eq('family_id', ctx.family_id).order('updated_at', { ascending: false })
       : Promise.resolve({ data: [], error: null });
-    const [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, learningResult, answerResult, templateResult, sectionResult] = await Promise.all([
+    const [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, learningResult, answerResult, templateResult, sectionResult, redemptionResult, starLedgerResult, diamondLedgerResult, streakResult] = await Promise.all([
       requireClient().from('missions').select('*').eq('family_id', ctx.family_id).eq('scheduled_date', date).order('sort_order'),
       requireClient().from('rewards').select('*').eq('family_id', ctx.family_id).eq('active', true).order('sort_order'),
       requireClient().rpc('current_star_balance', { p_child_id: ctx.child_id }),
       requireClient().rpc('current_diamond_balance', { p_child_id: ctx.child_id }),
       requireClient().from('diamond_exchanges').select('*').eq('family_id', ctx.family_id).eq('status', 'pending').order('requested_at', { ascending: false }),
-      requireClient().from('families').select('stars_per_diamond').eq('id', ctx.family_id).single(),
+      requireClient().from('families').select('stars_per_diamond, streak_3_bonus, streak_7_bonus, streak_30_bonus').eq('id', ctx.family_id).single(),
       requireClient().from('learning_materials').select('*').eq('family_id', ctx.family_id).eq('active', true).order('sort_order'),
       answerQuery,
       requireClient().from('task_templates').select('*').eq('family_id', ctx.family_id).eq('active', true).order('created_at'),
       requireClient().from('template_sections').select('*').eq('family_id', ctx.family_id).order('sort_order'),
+      requireClient().from('redemptions').select('*').eq('family_id', ctx.family_id).eq('status', 'pending').order('requested_at', { ascending: false }),
+      requireClient().from('star_ledger').select('id, delta, reason, created_at').eq('family_id', ctx.family_id).order('created_at', { ascending: false }).limit(80),
+      requireClient().from('diamond_ledger').select('id, delta, reason, created_at').eq('family_id', ctx.family_id).order('created_at', { ascending: false }).limit(80),
+      requireClient().rpc('current_task_streak', { p_child_id: ctx.child_id }),
     ]);
-    for (const result of [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, learningResult, answerResult, templateResult, sectionResult]) if (result.error) throw result.error;
+    for (const result of [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, learningResult, answerResult, templateResult, sectionResult, redemptionResult, starLedgerResult, diamondLedgerResult, streakResult]) if (result.error) throw result.error;
     let learningMaterials = learningResult.data || [];
     let learningAnswers = answerResult.data || [];
     if (ctx.member_role === 'parent' && !learningMaterials.length) {
@@ -146,7 +150,18 @@
       stars: Number(balanceResult.data || 0),
       diamonds: Number(diamondBalanceResult.data || 0),
       starsPerDiamond: Number(familyResult.data?.stars_per_diamond || 10),
+      streakSettings: {
+        bonus3: Number(familyResult.data?.streak_3_bonus ?? 3),
+        bonus7: Number(familyResult.data?.streak_7_bonus ?? 7),
+        bonus30: Number(familyResult.data?.streak_30_bonus ?? 30),
+      },
+      currentStreak: Number(streakResult.data || 0),
       diamondExchanges: exchangeResult.data || [],
+      redemptions: redemptionResult.data || [],
+      pointLedger: [
+        ...(starLedgerResult.data || []).map(item => ({ ...item, currency: 'star' })),
+        ...(diamondLedgerResult.data || []).map(item => ({ ...item, currency: 'diamond' })),
+      ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
       learningMaterials,
       learningAnswers,
       templates: templateResult.data || [],
@@ -175,6 +190,15 @@
   }
   async function requestRedemption(rewardId) {
     const { data, error } = await requireClient().rpc('request_redemption', { p_reward_id: rewardId });
+    if (error) throw error;
+    return data;
+  }
+  async function reviewRedemption(redemptionId, approve, reason = null) {
+    const { data, error } = await requireClient().rpc('review_redemption', {
+      p_redemption_id: redemptionId,
+      p_approve: approve,
+      p_reason: reason,
+    });
     if (error) throw error;
     return data;
   }
@@ -208,6 +232,46 @@
     });
     if (error) throw error;
     return data;
+  }
+  async function saveStreakRewards(familyId, bonus3, bonus7, bonus30) {
+    const { data, error } = await requireClient().rpc('set_streak_rewards', {
+      p_family_id: familyId,
+      p_bonus_3: bonus3,
+      p_bonus_7: bonus7,
+      p_bonus_30: bonus30,
+    });
+    if (error) throw error;
+    return data;
+  }
+  async function adjustChildPoints(childId, starDelta, diamondDelta, reason) {
+    const { data, error } = await requireClient().rpc('adjust_child_points', {
+      p_child_id: childId,
+      p_star_delta: starDelta,
+      p_diamond_delta: diamondDelta,
+      p_reason: reason,
+    });
+    if (error) throw error;
+    return data;
+  }
+  async function loadHistoryData(startDate, endDate) {
+    if (!context) await getContext();
+    const startTimestamp = `${startDate}T00:00:00+08:00`;
+    const end = new Date(`${endDate}T00:00:00+08:00`);
+    end.setDate(end.getDate() + 1);
+    const endTimestamp = end.toISOString();
+    const [missionResult, starResult, diamondResult] = await Promise.all([
+      requireClient().from('missions').select('id, scheduled_date, section_name, title, stars, status').eq('family_id', context.family_id).gte('scheduled_date', startDate).lte('scheduled_date', endDate).order('scheduled_date').order('sort_order'),
+      requireClient().from('star_ledger').select('id, delta, reason, created_at').eq('family_id', context.family_id).gte('created_at', startTimestamp).lt('created_at', endTimestamp).order('created_at', { ascending: false }),
+      requireClient().from('diamond_ledger').select('id, delta, reason, created_at').eq('family_id', context.family_id).gte('created_at', startTimestamp).lt('created_at', endTimestamp).order('created_at', { ascending: false }),
+    ]);
+    for (const result of [missionResult, starResult, diamondResult]) if (result.error) throw result.error;
+    return {
+      missions: missionResult.data || [],
+      pointLedger: [
+        ...(starResult.data || []).map(item => ({ ...item, currency: 'star' })),
+        ...(diamondResult.data || []).map(item => ({ ...item, currency: 'diamond' })),
+      ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
+    };
   }
   async function publishTemplate({ templateId, taskIds, startDate, days, collision }) {
     const { data, error } = await requireClient().rpc('publish_template_selection', {
@@ -384,6 +448,7 @@
       .on('postgres_changes', { event: '*', schema: 'public', table: 'diamond_ledger', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'learning_materials', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'learning_answers', filter: `family_id=eq.${context.family_id}` }, onChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'streak_awards', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'families', filter: `id=eq.${context.family_id}` }, onChange)
       .subscribe();
     return realtimeChannel;
@@ -392,7 +457,8 @@
   window.KoalaCloud = {
     isConfigured, init, getSession, onAuthStateChange, signUpParent, signInParent, signInChild, signOut,
     getContext, createFamily, acceptInvite, createChildLogin, inviteParent, loadAppData, uploadEvidence,
-    submitMission, reviewMission, requestRedemption, requestDiamondExchange, reviewDiamondExchange, saveDiamondExchangeRate, resetChildPoints,
+    submitMission, reviewMission, requestRedemption, reviewRedemption, requestDiamondExchange, reviewDiamondExchange, saveDiamondExchangeRate, resetChildPoints,
+    saveStreakRewards, adjustChildPoints, loadHistoryData,
     publishTemplate, publishTemplateTask, saveTemplateTask, deleteTemplateTask, saveLearningMaterial, deleteLearningMaterial, saveReward,
     getEvidenceUrl, enablePushNotifications, disablePushNotifications, subscribe,
   };

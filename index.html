@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=25">
+  <link rel="stylesheet" href="styles.css?v=27">
 </head>
 <body>
   <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
@@ -80,6 +80,7 @@
             <span class="eyebrow">今日航行日志</span>
             <h1 id="childTitle">考拉，准备出发！</h1>
             <p id="missionSummary">今天有 7 个任务，完成后请爸爸妈妈确认。</p>
+            <div class="child-streak-pill"><span aria-hidden="true">🔥</span><strong>连续 <b id="childStreak">0</b> 天</strong><small id="childStreakHint">完成今天全部任务继续累计</small></div>
             <div class="hero-card__stats">
               <div><strong id="starBalance">12</strong><span>颗星星</span></div>
               <div><strong id="diamondBalance">0</strong><span>颗钻石</span></div>
@@ -136,12 +137,15 @@
           <button class="segmented__item" type="button" data-parent-tab="tasks">任务设置</button>
           <button class="segmented__item" type="button" data-parent-tab="learning">学习资料</button>
           <button class="segmented__item" type="button" data-parent-tab="rewards">奖励设置</button>
+          <button class="segmented__item" type="button" data-parent-tab="growth">成长记录</button>
           <button class="segmented__item" type="button" data-parent-tab="settings">家庭设置</button>
         </div>
 
         <div id="reviewPanel" class="parent-panel is-active">
           <div class="panel-title"><div><h2>孩子提交的任务</h2><p>确认后，对应星星才会到账。</p></div><span class="count-badge" id="reviewBadge">2 项</span></div>
           <div id="reviewList" class="review-list"></div>
+          <div class="panel-title panel-title--sub"><div><h2>奖励兑换申请</h2><p>确认后扣除星星，并记录为已兑现。</p></div><span class="count-badge" id="rewardReviewBadge">0 项</span></div>
+          <div id="rewardReviewList" class="review-list"></div>
           <div class="panel-title panel-title--sub"><div><h2>钻石兑换申请</h2><p>确认后扣除星星并增加钻石。</p></div><span class="count-badge" id="exchangeReviewBadge">0 项</span></div>
           <div id="exchangeReviewList" class="review-list"></div>
         </div>
@@ -167,6 +171,15 @@
         </div>
 
         <div id="rewardsPanel" class="parent-panel">
+          <div class="streak-settings-card">
+            <div class="streak-settings-card__copy"><span class="eyebrow">连续打卡</span><h2><span aria-hidden="true">🔥</span> 已连续 <strong id="currentStreak">0</strong> 天</h2><p id="streakNextHint">完成每天安排的全部任务即可累计。</p></div>
+            <div class="streak-bonus-inputs">
+              <label><span>3 天奖励</span><span><input id="streakBonus3" type="number" min="0" max="1000" value="3"><b>⭐</b></span></label>
+              <label><span>7 天奖励</span><span><input id="streakBonus7" type="number" min="0" max="1000" value="7"><b>⭐</b></span></label>
+              <label><span>30 天奖励</span><span><input id="streakBonus30" type="number" min="0" max="1000" value="30"><b>⭐</b></span></label>
+            </div>
+            <button id="saveStreakRewards" class="secondary-button" type="button">保存打卡奖励</button>
+          </div>
           <div class="points-settings-card">
             <div><span class="eyebrow">积分规则</span><h2>星星与钻石</h2><p>任务的星星数在“任务设置”中逐条修改；奖励价格在下方逐条修改。</p></div>
             <label><span>兑换 1 颗钻石需要</span><span class="points-rate-input"><input id="starsPerDiamond" type="number" min="1" max="1000" value="10"><b>颗星星</b></span></label>
@@ -184,8 +197,34 @@
             </div>
             <button id="openPointReset" class="danger-button point-reset-button" type="button">选择要清除的积分</button>
           </div>
+          <div class="panel-title panel-title--sub points-ledger-heading"><div><h2>积分明细</h2><p>任务、连续打卡、兑换、家长调整和清除记录都会保留。</p></div><button id="openPointAdjustment" class="secondary-button" type="button">＋ 手动调整</button></div>
+          <div id="pointLedgerList" class="point-ledger-list"></div>
           <div class="panel-title"><div><h2>自定义奖励</h2><p>孩子申请兑换后，需家长确认。</p></div><button id="addRewardButton" class="secondary-button" type="button">＋ 新增奖励</button></div>
           <div id="manageRewardList" class="manage-list"></div>
+        </div>
+
+        <div id="growthPanel" class="parent-panel">
+          <div class="growth-hero">
+            <div><span class="eyebrow">成长周报</span><h2 id="weeklyDateRange">本周</h2><p>任务完成、学习锻炼和积分变化一目了然。</p></div>
+            <div class="growth-streak"><span>🔥</span><strong id="growthStreak">0</strong><small>连续打卡天数</small></div>
+          </div>
+          <div class="weekly-summary-grid">
+            <article><span>完成率</span><strong id="weeklyCompletionRate">0%</strong><small id="weeklyCompletionCount">0/0 项</small></article>
+            <article><span>学习任务</span><strong id="weeklyLearningCount">0</strong><small>项已完成</small></article>
+            <article><span>锻炼任务</span><strong id="weeklyExerciseCount">0</strong><small>项已完成</small></article>
+            <article><span>本周获得</span><strong id="weeklyStarsEarned">0 ⭐</strong><small>含打卡奖励</small></article>
+          </div>
+          <div class="calendar-card">
+            <div class="calendar-head">
+              <button id="previousMonth" type="button" aria-label="上个月">‹</button>
+              <div><strong id="calendarMonthLabel">2026 年 8 月</strong><span>点日期查看当天任务</span></div>
+              <button id="nextMonth" type="button" aria-label="下个月">›</button>
+            </div>
+            <div class="calendar-weekdays" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+            <div id="calendarGrid" class="calendar-grid"></div>
+          </div>
+          <div class="panel-title panel-title--sub"><div><h2 id="historyDayTitle">当天任务</h2><p id="historyDaySummary">选择日期查看记录。</p></div></div>
+          <div id="historyDayList" class="history-day-list"></div>
         </div>
 
         <div id="settingsPanel" class="parent-panel">
@@ -449,10 +488,26 @@
     </form>
   </dialog>
 
+  <dialog id="pointAdjustmentDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="sheet__icon">⚖️</span><h2>家长手动调整积分</h2>
+      <p>请选择积分类型和增减方式，并填写原因。调整记录会永久保留。</p>
+      <div class="form-grid">
+        <label><span>积分类型</span><select id="adjustPointCurrency"><option value="star">⭐ 星星</option><option value="diamond">💎 钻石</option></select></label>
+        <label><span>调整方式</span><select id="adjustPointDirection"><option value="add">增加</option><option value="deduct">扣除</option></select></label>
+      </div>
+      <label class="field"><span>数量</span><input id="adjustPointAmount" type="number" min="1" max="1000" value="1"></label>
+      <label class="field"><span>原因</span><input id="adjustPointReason" type="text" maxlength="80" placeholder="例如：主动帮助整理房间"></label>
+      <p id="pointAdjustmentMessage" class="auth-message" role="status"></p>
+      <button id="confirmPointAdjustment" class="primary-button primary-button--wide" type="button">确认调整</button>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastIcon" class="toast__icon" aria-hidden="true">✓</span><span id="toastMessage"></span></div>
   <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
   <script src="config.js"></script>
-  <script src="cloud.js?v=25"></script>
-  <script src="app.js?v=25" defer></script>
+  <script src="cloud.js?v=27"></script>
+  <script src="app.js?v=27" defer></script>
 </body>
 </html>

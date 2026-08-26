@@ -28,7 +28,16 @@ const state = {
   diamonds: Number(localStorage.getItem('koala-demo-diamonds') || 0),
   starsPerDiamond: Number(localStorage.getItem('koala-demo-stars-per-diamond') || 10),
   diamondExchanges: JSON.parse(localStorage.getItem('koala-demo-diamond-exchanges') || 'null') || [],
+  redemptions: JSON.parse(localStorage.getItem('koala-demo-redemptions') || 'null') || [],
+  pointLedger: JSON.parse(localStorage.getItem('koala-demo-point-ledger') || 'null') || [],
   pointResetHistory: JSON.parse(localStorage.getItem('koala-demo-point-reset-history') || 'null') || [],
+  streakSettings: JSON.parse(localStorage.getItem('koala-demo-streak-settings') || 'null') || { bonus3: 3, bonus7: 7, bonus30: 30 },
+  currentStreak: Number(localStorage.getItem('koala-demo-current-streak') || 2),
+  streakAwardDates: JSON.parse(localStorage.getItem('koala-demo-streak-award-dates') || 'null') || [],
+  historyMissions: JSON.parse(localStorage.getItem('koala-demo-history-missions') || 'null') || [],
+  historyPointLedger: [],
+  historyMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+  selectedHistoryDate: localIsoDate(),
   learningMaterials: JSON.parse(localStorage.getItem('koala-demo-learning-materials') || 'null') || initialLearningMaterials,
   learningSubject: '全部',
   learningLibraryMode: 'materials',
@@ -56,6 +65,9 @@ state.learningMaterials = state.learningMaterials.map(material => ({
   ...material,
   answer: material.answer ?? initialLearningMaterials.find(sample => sameId(sample.id, material.id) || sample.title === material.title)?.answer ?? '',
 }));
+if (!state.historyMissions.length) {
+  state.historyMissions = state.tasks.map(task => ({ ...task, scheduledDate: localIsoDate(), sectionName: task.group, title: task.name }));
+}
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const defaultTaskGroups = ['早晨', '放学后', '锻炼', '睡前'];
@@ -251,7 +263,13 @@ function save() {
   localStorage.setItem('koala-demo-diamonds', String(state.diamonds));
   localStorage.setItem('koala-demo-stars-per-diamond', String(state.starsPerDiamond));
   localStorage.setItem('koala-demo-diamond-exchanges', JSON.stringify(state.diamondExchanges));
+  localStorage.setItem('koala-demo-redemptions', JSON.stringify(state.redemptions));
+  localStorage.setItem('koala-demo-point-ledger', JSON.stringify(state.pointLedger));
   localStorage.setItem('koala-demo-point-reset-history', JSON.stringify(state.pointResetHistory));
+  localStorage.setItem('koala-demo-streak-settings', JSON.stringify(state.streakSettings));
+  localStorage.setItem('koala-demo-current-streak', String(state.currentStreak));
+  localStorage.setItem('koala-demo-streak-award-dates', JSON.stringify(state.streakAwardDates));
+  localStorage.setItem('koala-demo-history-missions', JSON.stringify(state.historyMissions));
   localStorage.setItem('koala-demo-learning-materials', JSON.stringify(state.learningMaterials));
 }
 function statusText(task) {
@@ -273,16 +291,19 @@ function renderTasks() {
   renderSummary();
 }
 function renderRewards() {
-  $('#childRewards').innerHTML = state.rewards.map(reward => `<article class="reward-card"><span class="reward-card__icon">${reward.icon}</span><strong>${reward.name}</strong><span>⭐ ${reward.cost}</span><button type="button" data-redeem="${reward.id}">申请兑换</button></article>`).join('');
+  $('#childRewards').innerHTML = state.rewards.map(reward => {
+    const pending = state.redemptions.some(item => item.status === 'pending' && sameId(item.rewardId, reward.id));
+    return `<article class="reward-card"><span class="reward-card__icon">${reward.icon}</span><strong>${reward.name}</strong><span>⭐ ${reward.cost}</span><button type="button" data-redeem="${reward.id}" ${pending ? 'disabled' : ''}>${pending ? '等待家长确认' : '申请兑换'}</button></article>`;
+  }).join('');
   $('[data-show-rewards]').onclick = () => showToast('已显示全部自定义奖励');
   $$('[data-redeem]').forEach(button => button.onclick = async () => {
     const reward = findById(state.rewards, button.dataset.redeem);
     if (state.stars < reward.cost) return showToast(`还差 ${reward.cost - state.stars} 颗星星，加油！`);
     if (state.cloudMode) {
       if (state.context?.member_role !== 'child') return showToast('请在孩子设备登录后申请兑换');
-      try { await window.KoalaCloud.requestRedemption(reward.id); }
+      try { await window.KoalaCloud.requestRedemption(reward.id); await loadCloudData(); }
       catch (error) { return showToast(cloudErrorMessage(error)); }
-    }
+    } else { state.redemptions.push({ id: Date.now(), rewardId: reward.id, rewardTitle: reward.name, cost: reward.cost, status: 'pending', requestedAt: new Date().toISOString() }); renderAll(); }
     showToast('兑换申请已发送，等待家长确认');
   });
 }
@@ -295,8 +316,17 @@ function renderReview() {
     try { window.open(await window.KoalaCloud.getEvidenceUrl(button.dataset.evidence), '_blank', 'noopener'); }
     catch (error) { showToast(cloudErrorMessage(error)); }
   });
+  renderRedemptionReviews();
   renderDiamondExchangeReviews();
   renderSummary();
+}
+function pendingRedemptions() { return state.redemptions.filter(item => item.status === 'pending'); }
+function renderRedemptionReviews() {
+  const pending = pendingRedemptions();
+  $('#rewardReviewBadge').textContent = `${pending.length} 项`;
+  $('#rewardReviewList').innerHTML = pending.length ? pending.map(item => `<article class="review-item"><div class="review-item__main"><div class="review-item__photo">🎁</div><div><strong>${escapeHtml(item.rewardTitle)}</strong><span>需要 ⭐ ${item.cost} · 等待家长确认</span></div></div><div class="review-item__actions"><button class="approve" type="button" data-approve-redemption="${item.id}">确认兑现</button><button class="reject" type="button" data-reject-redemption="${item.id}">拒绝</button></div></article>`).join('') : '<div class="demo-note"><strong>暂无奖励兑换申请</strong><p>孩子申请自定义奖励后会显示在这里。</p></div>';
+  $$('[data-approve-redemption]').forEach(button => button.onclick = () => reviewRewardRedemption(button.dataset.approveRedemption, true));
+  $$('[data-reject-redemption]').forEach(button => button.onclick = () => reviewRewardRedemption(button.dataset.rejectRedemption, false));
 }
 function pendingDiamondExchanges() { return state.diamondExchanges.filter(exchange => exchange.status === 'pending'); }
 function renderDiamondExchangeReviews() {
@@ -656,6 +686,7 @@ async function confirmQuickPublish() {
 function renderSummary() {
   const pendingTasks = state.tasks.filter(t => t.status === 'submitted').length;
   const pendingExchanges = pendingDiamondExchanges().length;
+  const pendingRewards = pendingRedemptions().length;
   const approved = state.tasks.filter(t => t.status === 'approved').length;
   $('#starBalance').textContent = state.stars;
   $('#diamondBalance').textContent = state.diamonds;
@@ -664,15 +695,24 @@ function renderSummary() {
   $('#resetStarsBalance').textContent = state.stars;
   $('#resetDiamondsBalance').textContent = state.diamonds;
   $('#doneCount').textContent = `${approved}/${state.tasks.length}`;
-  $('#pendingCount').textContent = pendingTasks + pendingExchanges;
+  $('#pendingCount').textContent = pendingTasks + pendingExchanges + pendingRewards;
   $('#approvedCount').textContent = approved;
   $('#reviewBadge').textContent = `${pendingTasks} 项`;
   $('#childExchangeRate').textContent = state.starsPerDiamond;
   $('#starsPerDiamond').value = state.starsPerDiamond;
+  $('#currentStreak').textContent = state.currentStreak;
+  $('#growthStreak').textContent = state.currentStreak;
+  $('#childStreak').textContent = state.currentStreak;
+  $('#streakBonus3').value = state.streakSettings.bonus3;
+  $('#streakBonus7').value = state.streakSettings.bonus7;
+  $('#streakBonus30').value = state.streakSettings.bonus30;
+  const nextMilestone = [3, 7, 30].find(value => value > state.currentStreak);
+  $('#streakNextHint').textContent = nextMilestone ? `再完成 ${nextMilestone - state.currentStreak} 个打卡日，可获得 ${state.streakSettings[`bonus${nextMilestone}`]} 颗星星。` : '已完成 30 天里程碑，继续保持好习惯！';
+  $('#childStreakHint').textContent = nextMilestone ? `再 ${nextMilestone - state.currentStreak} 天奖励 ⭐ ${state.streakSettings[`bonus${nextMilestone}`]}` : '继续保持好习惯！';
   $('#childExchangePending').textContent = pendingExchanges ? `已有 ${pendingExchanges} 个申请等待家长确认` : '由家长设置兑换比例，确认后才会生效';
   $('#missionSummary').textContent = `今天有 ${state.tasks.length} 个任务，完成后请爸爸妈妈确认。`;
 }
-function renderAll() { renderTasks(); renderRewards(); renderReview(); renderManageLists(); renderLearningMaterials(); save(); }
+function renderAll() { renderTasks(); renderRewards(); renderReview(); renderManageLists(); renderLearningMaterials(); renderPointLedger(); renderGrowthPanel(); save(); }
 
 function handleTaskSubmit(event) {
   const task = findById(state.tasks, event.currentTarget.closest('[data-task-id]').dataset.taskId);
@@ -708,6 +748,8 @@ async function submitTask(task, file = null) {
     }
   } else {
     task.status = 'submitted';
+    const historyMission = findById(state.historyMissions, task.id);
+    if (historyMission) historyMission.status = 'submitted';
     renderAll();
   }
   showToast('任务已提交，等待家长确认');
@@ -722,10 +764,25 @@ async function approveTask(id) {
   } else {
     task.status = 'approved';
     state.stars += task.stars;
+    state.pointLedger.unshift({ id: `task-${task.id}-${Date.now()}`, currency: 'star', delta: task.stars, reason: `完成任务：${task.name}`, createdAt: new Date().toISOString() });
+    const historyMission = findById(state.historyMissions, task.id);
+    if (historyMission) historyMission.status = 'approved';
+    applyLocalStreakReward();
     renderAll();
   }
   celebrate();
   showToast(`已确认，考拉获得 ${task.stars} 颗星星`);
+}
+function applyLocalStreakReward() {
+  const today = localIsoDate();
+  if (!state.tasks.length || state.tasks.some(task => task.status !== 'approved') || state.streakAwardDates.includes(today)) return;
+  state.streakAwardDates.push(today);
+  state.currentStreak += 1;
+  const bonus = state.streakSettings[`bonus${state.currentStreak}`] || 0;
+  if (bonus > 0) {
+    state.stars += bonus;
+    state.pointLedger.unshift({ id: `streak-${today}`, currency: 'star', delta: bonus, reason: `连续打卡 ${state.currentStreak} 天奖励`, createdAt: new Date().toISOString() });
+  }
 }
 async function rejectTask(id) {
   const task = findById(state.tasks, id);
@@ -736,6 +793,8 @@ async function rejectTask(id) {
     } catch (error) { return showToast(cloudErrorMessage(error)); }
   } else {
     task.status = 'todo';
+    const historyMission = findById(state.historyMissions, task.id);
+    if (historyMission) historyMission.status = 'todo';
     renderAll();
   }
   showToast('已退回，请考拉重新完成');
@@ -862,7 +921,13 @@ async function reviewDiamondExchange(id, approve) {
       if (!exchange || exchange.status !== 'pending') return showToast('这个申请已经处理过了');
       if (approve && state.stars < exchange.starsSpent) return showToast('当前星星不足，无法确认兑换');
       exchange.status = approve ? 'approved' : 'rejected';
-      if (approve) { state.stars -= exchange.starsSpent; state.diamonds += exchange.diamondsReceived; }
+      if (approve) {
+        state.stars -= exchange.starsSpent;
+        state.diamonds += exchange.diamondsReceived;
+        const createdAt = new Date().toISOString();
+        state.pointLedger.unshift({ id: `diamond-star-${id}`, currency: 'star', delta: -exchange.starsSpent, reason: '升级钻石', createdAt });
+        state.pointLedger.unshift({ id: `diamond-${id}`, currency: 'diamond', delta: exchange.diamondsReceived, reason: '星星升级钻石', createdAt });
+      }
       renderAll();
     }
     showToast(approve ? '已确认兑换钻石' : '已拒绝兑换申请');
@@ -880,6 +945,151 @@ async function saveDiamondRate() {
     showToast(state.cloudMode ? '兑换比例已保存并同步' : '兑换比例已保存');
   } catch (error) { showToast(cloudErrorMessage(error)); }
   finally { button.disabled = false; }
+}
+async function reviewRewardRedemption(id, approve) {
+  const redemption = findById(state.redemptions, id);
+  if (!redemption || redemption.status !== 'pending') return showToast('这个奖励申请已经处理过了');
+  if (approve && state.stars < redemption.cost) return showToast('当前星星不足，无法确认兑现', 'error');
+  try {
+    if (state.cloudMode) {
+      await window.KoalaCloud.reviewRedemption(id, approve, approve ? null : '暂不兑换');
+      await loadCloudData();
+    } else {
+      redemption.status = approve ? 'approved' : 'rejected';
+      if (approve) {
+        state.stars -= redemption.cost;
+        state.pointLedger.unshift({ id: `reward-${id}`, currency: 'star', delta: -redemption.cost, reason: `兑换奖励：${redemption.rewardTitle}`, createdAt: new Date().toISOString() });
+      }
+      renderAll();
+    }
+    showToast(approve ? `已确认兑现“${redemption.rewardTitle}”` : '已拒绝奖励申请', approve ? 'success' : 'info');
+  } catch (error) { showToast(cloudErrorMessage(error), 'error'); }
+}
+function renderPointLedger() {
+  const entries = state.pointLedger.slice(0, 20);
+  $('#pointLedgerList').innerHTML = entries.length ? entries.map(item => {
+    const currency = item.currency === 'diamond' ? '💎' : '⭐';
+    const createdAt = item.createdAt || item.created_at;
+    const dateText = createdAt ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(createdAt)) : '刚刚';
+    return `<article class="point-ledger-item"><span class="point-ledger-item__icon">${currency}</span><div><strong>${escapeHtml(item.reason || '积分调整')}</strong><small>${dateText}</small></div><span class="point-ledger-item__delta ${item.delta > 0 ? 'is-positive' : 'is-negative'}">${item.delta > 0 ? '+' : ''}${item.delta} ${currency}</span></article>`;
+  }).join('') : '<div class="demo-note"><strong>暂时没有积分明细</strong><p>任务确认、奖励兑换和家长调整后会显示在这里。</p></div>';
+}
+async function saveStreakRewards() {
+  const bonus3 = Number($('#streakBonus3').value);
+  const bonus7 = Number($('#streakBonus7').value);
+  const bonus30 = Number($('#streakBonus30').value);
+  if (![bonus3, bonus7, bonus30].every(value => Number.isInteger(value) && value >= 0 && value <= 1000)) return showToast('连续打卡奖励应为 0 到 1000 颗星星', 'error');
+  const button = $('#saveStreakRewards');
+  button.disabled = true;
+  try {
+    if (state.cloudMode) await window.KoalaCloud.saveStreakRewards(state.context.family_id, bonus3, bonus7, bonus30);
+    state.streakSettings = { bonus3, bonus7, bonus30 };
+    renderAll();
+    showToast(state.cloudMode ? '连续打卡奖励已保存并同步' : '连续打卡奖励已保存', 'success');
+  } catch (error) { showToast(cloudErrorMessage(error), 'error'); }
+  finally { button.disabled = false; }
+}
+function openPointAdjustmentDialog() {
+  if (state.cloudMode && state.context?.member_role !== 'parent') return showToast('只有家长可以调整积分', 'error');
+  $('#adjustPointCurrency').value = 'star';
+  $('#adjustPointDirection').value = 'add';
+  $('#adjustPointAmount').value = 1;
+  $('#adjustPointReason').value = '';
+  setAuthMessage('#pointAdjustmentMessage', '每次调整都会记录原因和时间。');
+  showDialogAtTop($('#pointAdjustmentDialog'));
+}
+async function confirmPointAdjustment() {
+  const currency = $('#adjustPointCurrency').value;
+  const direction = $('#adjustPointDirection').value;
+  const amount = Number($('#adjustPointAmount').value);
+  const reason = $('#adjustPointReason').value.trim();
+  if (!Number.isInteger(amount) || amount < 1 || amount > 1000) return setAuthMessage('#pointAdjustmentMessage', '数量应为 1 到 1000', 'error');
+  if (!reason) return setAuthMessage('#pointAdjustmentMessage', '请填写调整原因', 'error');
+  const delta = direction === 'deduct' ? -amount : amount;
+  if (currency === 'star' && state.stars + delta < 0) return setAuthMessage('#pointAdjustmentMessage', '星星余额不足，不能扣到负数', 'error');
+  if (currency === 'diamond' && state.diamonds + delta < 0) return setAuthMessage('#pointAdjustmentMessage', '钻石余额不足，不能扣到负数', 'error');
+  const button = $('#confirmPointAdjustment');
+  button.disabled = true;
+  try {
+    if (state.cloudMode) {
+      await window.KoalaCloud.adjustChildPoints(state.context.child_id, currency === 'star' ? delta : 0, currency === 'diamond' ? delta : 0, reason);
+      await loadCloudData();
+    } else {
+      if (currency === 'star') state.stars += delta; else state.diamonds += delta;
+      state.pointLedger.unshift({ id: `adjust-${Date.now()}`, currency, delta, reason: `家长调整：${reason}`, createdAt: new Date().toISOString() });
+      renderAll();
+    }
+    $('#pointAdjustmentDialog').close();
+    showToast(`已${direction === 'add' ? '增加' : '扣除'} ${amount} ${currency === 'star' ? '颗星星' : '颗钻石'}`, 'success');
+  } catch (error) { setAuthMessage('#pointAdjustmentMessage', cloudErrorMessage(error), 'error'); }
+  finally { button.disabled = false; }
+}
+function parseIsoDate(value) {
+  const [year, month, day] = String(value).split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+function addDays(date, days) { const result = new Date(date); result.setDate(result.getDate() + days); return result; }
+function startOfWeek(date) { const result = new Date(date); const day = result.getDay() || 7; result.setDate(result.getDate() - day + 1); result.setHours(0, 0, 0, 0); return result; }
+function historyMissionDate(mission) { return mission.scheduledDate || mission.scheduled_date; }
+function historyMissionTitle(mission) { return mission.title || mission.name; }
+function historyMissionGroup(mission) { return mission.sectionName || mission.section_name || mission.group || '任务'; }
+function renderGrowthPanel() {
+  const selectedDate = parseIsoDate(state.selectedHistoryDate);
+  const weekStart = startOfWeek(selectedDate);
+  const weekEnd = addDays(weekStart, 6);
+  const weekMissions = state.historyMissions.filter(item => {
+    const date = parseIsoDate(historyMissionDate(item));
+    return date >= weekStart && date <= weekEnd;
+  });
+  const approved = weekMissions.filter(item => item.status === 'approved');
+  const learning = approved.filter(item => taskSubject({ name: historyMissionTitle(item), group: historyMissionGroup(item) }));
+  const exercise = approved.filter(item => /锻炼|运动|跳绳|跑步|户外/.test(`${historyMissionGroup(item)}${historyMissionTitle(item)}`));
+  const ledger = state.historyPointLedger.length ? state.historyPointLedger : state.pointLedger;
+  const earnedFromLedger = ledger.filter(item => item.currency === 'star' && item.delta > 0 && (() => { const date = new Date(item.createdAt || item.created_at); return date >= weekStart && date < addDays(weekEnd, 1); })()).reduce((sum, item) => sum + item.delta, 0);
+  const earned = earnedFromLedger || approved.reduce((sum, item) => sum + Number(item.stars || 0), 0);
+  $('#weeklyDateRange').textContent = `${weekStart.getMonth() + 1} 月 ${weekStart.getDate()} 日—${weekEnd.getMonth() + 1} 月 ${weekEnd.getDate()} 日`;
+  $('#weeklyCompletionRate').textContent = weekMissions.length ? `${Math.round(approved.length / weekMissions.length * 100)}%` : '0%';
+  $('#weeklyCompletionCount').textContent = `${approved.length}/${weekMissions.length} 项`;
+  $('#weeklyLearningCount').textContent = learning.length;
+  $('#weeklyExerciseCount').textContent = exercise.length;
+  $('#weeklyStarsEarned').textContent = `${earned} ⭐`;
+  $('#growthStreak').textContent = state.currentStreak;
+  renderCalendar();
+  renderHistoryDay();
+}
+function renderCalendar() {
+  const month = state.historyMonth;
+  $('#calendarMonthLabel').textContent = `${month.getFullYear()} 年 ${month.getMonth() + 1} 月`;
+  const gridStart = startOfWeek(new Date(month.getFullYear(), month.getMonth(), 1));
+  const today = localIsoDate();
+  $('#calendarGrid').innerHTML = Array.from({ length: 42 }, (_, index) => {
+    const date = addDays(gridStart, index);
+    const iso = localIsoDate(date);
+    const missions = state.historyMissions.filter(item => historyMissionDate(item) === iso);
+    const approved = missions.filter(item => item.status === 'approved').length;
+    const completion = missions.length && approved === missions.length ? 'complete' : missions.length ? 'partial' : 'empty';
+    return `<button class="calendar-day ${date.getMonth() === month.getMonth() ? 'is-current-month' : ''} ${iso === state.selectedHistoryDate ? 'is-selected' : ''} ${iso === today ? 'is-today' : ''}" type="button" data-history-date="${iso}" data-completion="${completion}" aria-label="${date.getMonth() + 1}月${date.getDate()}日，${missions.length ? `${approved}/${missions.length}项完成` : '无任务'}"><span>${date.getDate()}</span><small>${missions.length ? `${approved}/${missions.length} ✓` : '·'}</small></button>`;
+  }).join('');
+  $$('[data-history-date]').forEach(button => button.onclick = () => { state.selectedHistoryDate = button.dataset.historyDate; renderGrowthPanel(); });
+}
+function renderHistoryDay() {
+  const date = parseIsoDate(state.selectedHistoryDate);
+  const missions = state.historyMissions.filter(item => historyMissionDate(item) === state.selectedHistoryDate);
+  const approved = missions.filter(item => item.status === 'approved').length;
+  $('#historyDayTitle').textContent = `${date.getMonth() + 1} 月 ${date.getDate()} 日任务`;
+  $('#historyDaySummary').textContent = missions.length ? `完成 ${approved}/${missions.length} 项` : '当天没有安排任务。';
+  $('#historyDayList').innerHTML = missions.length ? missions.map(item => `<article class="history-day-item is-${item.status}"><span class="history-day-item__status">${item.status === 'approved' ? '✓' : item.status === 'submitted' ? '…' : '○'}</span><div><strong>${escapeHtml(historyMissionTitle(item))}</strong><small>${escapeHtml(historyMissionGroup(item))} · ${item.status === 'approved' ? '已完成' : item.status === 'submitted' ? '待家长确认' : '未完成'}</small></div><b>⭐ ${item.stars}</b></article>`).join('') : '<div class="demo-note"><strong>没有任务记录</strong><p>家长发布任务后，这里会按日期保存完成情况。</p></div>';
+}
+async function loadHistoryMonth() {
+  if (!state.cloudMode) { state.historyPointLedger = state.pointLedger; return renderGrowthPanel(); }
+  const gridStart = startOfWeek(new Date(state.historyMonth.getFullYear(), state.historyMonth.getMonth(), 1));
+  const gridEnd = addDays(gridStart, 41);
+  try {
+    const data = await window.KoalaCloud.loadHistoryData(localIsoDate(gridStart), localIsoDate(gridEnd));
+    state.historyMissions = data.missions.map(item => ({ id: item.id, scheduledDate: item.scheduled_date, sectionName: item.section_name, title: item.title, stars: item.stars, status: item.status }));
+    state.historyPointLedger = data.pointLedger.map(item => ({ ...item, createdAt: item.created_at }));
+    renderGrowthPanel();
+  } catch (error) { showToast(cloudErrorMessage(error), 'error'); }
 }
 function updatePointResetPreview() {
   const resetStars = $('#resetStarsOption').checked;
@@ -921,8 +1131,12 @@ async function confirmPointReset() {
       if (resetStars) state.stars = 0;
       if (resetDiamonds) state.diamonds = 0;
       state.diamondExchanges.forEach(exchange => { if (exchange.status === 'pending') exchange.status = 'rejected'; });
+      if (resetStars) state.redemptions.forEach(item => { if (item.status === 'pending') item.status = 'rejected'; });
+      const resetAt = new Date().toISOString();
+      if (resetStars && previousStars > 0) state.pointLedger.unshift({ id: `reset-stars-${Date.now()}`, currency: 'star', delta: -previousStars, reason: '家长清零星星', createdAt: resetAt });
+      if (resetDiamonds && previousDiamonds > 0) state.pointLedger.unshift({ id: `reset-diamonds-${Date.now()}`, currency: 'diamond', delta: -previousDiamonds, reason: '家长清零钻石', createdAt: resetAt });
       state.pointResetHistory.unshift({
-        at: new Date().toISOString(),
+        at: resetAt,
         stars: resetStars ? previousStars : null,
         diamonds: resetDiamonds ? previousDiamonds : null,
       });
@@ -989,6 +1203,11 @@ function cloudErrorMessage(error) {
     ['INSUFFICIENT_STARS', '星星不足，暂时不能兑换'],
     ['RATE_OUT_OF_RANGE', '兑换比例应为 1 到 1000 颗星星'],
     ['DIAMOND_EXCHANGE_NOT_PENDING', '这个钻石兑换申请已经处理过了'],
+    ['REDEMPTION_NOT_PENDING', '这个奖励申请已经处理过了'],
+    ['STREAK_BONUS_OUT_OF_RANGE', '连续打卡奖励应为 0 到 1000 颗星星'],
+    ['ADJUSTMENT_REASON_REQUIRED', '请填写积分调整原因'],
+    ['ADJUSTMENT_OUT_OF_RANGE', '每次最多调整 1000 个积分'],
+    ['INSUFFICIENT_POINTS', '积分余额不足，不能扣到负数'],
     ['PARENT_PERMISSION_REQUIRED', '只有家长可以执行这个操作'],
   ];
   const found = messages.find(([key]) => normalized.includes(key));
@@ -1034,6 +1253,10 @@ async function loadCloudData() {
   state.stars = data.stars;
   state.diamonds = data.diamonds;
   state.starsPerDiamond = data.starsPerDiamond;
+  state.streakSettings = data.streakSettings;
+  state.currentStreak = data.currentStreak;
+  state.redemptions = data.redemptions.map(item => ({ id: item.id, rewardId: item.reward_id, rewardTitle: item.reward_title, cost: item.cost, status: item.status, requestedAt: item.requested_at }));
+  state.pointLedger = data.pointLedger.map(item => ({ ...item, createdAt: item.created_at }));
   state.diamondExchanges = data.diamondExchanges.map(exchange => ({
     id: exchange.id,
     starsSpent: exchange.stars_spent,
@@ -1151,6 +1374,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $$('[data-parent-tab]').forEach(button => button.onclick = () => {
     $$('[data-parent-tab]').forEach(x => x.classList.remove('is-active')); button.classList.add('is-active');
     $$('.parent-panel').forEach(x => x.classList.remove('is-active')); $(`#${button.dataset.parentTab}Panel`).classList.add('is-active');
+    if (button.dataset.parentTab === 'growth') loadHistoryMonth();
   });
   $$('[data-auth-tab]').forEach(button => button.onclick = () => selectAuthTab(button.dataset.authTab));
   $('#toggleRegister').onclick = () => {
@@ -1322,6 +1546,11 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#deleteEditor').onclick = deleteEditorTask;
   $('#requestDiamondExchange').onclick = requestDiamondExchange;
   $('#saveDiamondRate').onclick = saveDiamondRate;
+  $('#saveStreakRewards').onclick = saveStreakRewards;
+  $('#openPointAdjustment').onclick = openPointAdjustmentDialog;
+  $('#confirmPointAdjustment').onclick = confirmPointAdjustment;
+  $('#previousMonth').onclick = () => { state.historyMonth = new Date(state.historyMonth.getFullYear(), state.historyMonth.getMonth() - 1, 1); state.selectedHistoryDate = localIsoDate(state.historyMonth); loadHistoryMonth(); };
+  $('#nextMonth').onclick = () => { state.historyMonth = new Date(state.historyMonth.getFullYear(), state.historyMonth.getMonth() + 1, 1); state.selectedHistoryDate = localIsoDate(state.historyMonth); loadHistoryMonth(); };
   $('#openPointReset').onclick = openPointResetDialog;
   $('#resetStarsOption').onchange = updatePointResetPreview;
   $('#resetDiamondsOption').onchange = updatePointResetPreview;
