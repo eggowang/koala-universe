@@ -21,6 +21,7 @@ function normalizeEndpoint(value: string) {
   const url = new URL(value.trim())
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('AI_API_URL_INVALID')
   const pathname = url.pathname.replace(/\/+$/, '')
+  url.pathname = pathname || '/'
   if (!pathname || pathname === '/') url.pathname = '/v1/chat/completions'
   else if (/\/v1$/i.test(pathname)) url.pathname = `${pathname}/chat/completions`
   return url.toString()

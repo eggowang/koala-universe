@@ -438,6 +438,7 @@ function normalizeAiEndpoint(value) {
   const url = new URL(String(value || '').trim());
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('API 地址必须以 http:// 或 https:// 开头');
   const pathname = url.pathname.replace(/\/+$/, '');
+  url.pathname = pathname || '/';
   if (!pathname || pathname === '/') url.pathname = '/v1/chat/completions';
   else if (/\/v1$/i.test(pathname)) url.pathname = `${pathname}/chat/completions`;
   return url.toString();
