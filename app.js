@@ -826,7 +826,11 @@ function openEditor(type, id = null) {
   $('#editorPhoto').checked = Boolean(item?.photo);
   $('#editorGroupField').hidden = type !== 'task';
   $('#editorPhotoField').hidden = type !== 'task';
-  $('#editorDeleteArea').hidden = !(type === 'task' && id);
+  $('#editorDeleteArea').hidden = !id;
+  $('#deleteEditor').textContent = type === 'task' ? '删除此任务' : '删除此奖励';
+  $('#editorDeleteHint').textContent = type === 'task'
+    ? '只删除任务模板，已经发布的任务和完成记录会保留。'
+    : '只从奖励列表移除，过去的兑换申请和积分记录会保留。';
   showDialogAtTop($('#editorDialog'));
 }
 async function saveEditor() {
@@ -870,25 +874,30 @@ async function saveEditor() {
   renderAll();
   showToast('已保存');
 }
-async function deleteEditorTask() {
+async function deleteEditorItem() {
   const { type, id } = state.editing || {};
-  if (type !== 'task' || !id) return;
-  const task = findById(getManagedTasks(), id);
-  if (!task) return showToast('没有找到这个任务');
-  if (!window.confirm(`确定删除“${task.name}”吗？\n\n只会删除任务模板，已经发布的任务和完成记录会保留。`)) return;
+  if (!id || !['task', 'reward'].includes(type)) return;
+  const item = findById(type === 'task' ? getManagedTasks() : state.rewards, id);
+  if (!item) return showToast(type === 'task' ? '没有找到这个任务' : '没有找到这个奖励');
+  const historyNote = type === 'task'
+    ? '只会删除任务模板，已经发布的任务和完成记录会保留。'
+    : '只会从奖励列表移除，过去的兑换申请和积分记录会保留。';
+  if (!window.confirm(`确定删除“${item.name}”吗？\n\n${historyNote}`)) return;
   const button = $('#deleteEditor');
   button.disabled = true;
   try {
     if (state.cloudMode) {
-      await window.KoalaCloud.deleteTemplateTask(id);
+      if (type === 'task') await window.KoalaCloud.deleteTemplateTask(id);
+      else await window.KoalaCloud.deleteReward(id);
       $('#editorDialog').close();
       await loadCloudData();
-      showToast('任务模板已删除并同步');
+      showToast(type === 'task' ? '任务模板已删除并同步' : '奖励已删除并同步');
     } else {
-      state.tasks = state.tasks.filter(item => !sameId(item.id, id));
+      if (type === 'task') state.tasks = state.tasks.filter(entry => !sameId(entry.id, id));
+      else state.rewards = state.rewards.filter(entry => !sameId(entry.id, id));
       $('#editorDialog').close();
       renderAll();
-      showToast('任务已删除');
+      showToast(type === 'task' ? '任务已删除' : '奖励已删除');
     }
   } catch (error) { showToast(cloudErrorMessage(error)); }
   finally { button.disabled = false; }
@@ -1543,7 +1552,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#saveLearningMaterial').onclick = saveLearningMaterial;
   $('#deleteLearningMaterial').onclick = deleteLearningMaterial;
   $('#saveEditor').onclick = saveEditor;
-  $('#deleteEditor').onclick = deleteEditorTask;
+  $('#deleteEditor').onclick = deleteEditorItem;
   $('#requestDiamondExchange').onclick = requestDiamondExchange;
   $('#saveDiamondRate').onclick = saveDiamondRate;
   $('#saveStreakRewards').onclick = saveStreakRewards;

@@ -388,6 +388,12 @@
     const { error } = await requireClient().from('rewards').insert({ ...payload, created_by: userData.user.id });
     if (error) throw error;
   }
+  async function deleteReward(rewardId) {
+    const { error } = await requireClient().from('rewards').delete()
+      .eq('id', rewardId)
+      .eq('family_id', context.family_id);
+    if (error) throw error;
+  }
   async function getEvidenceUrl(path) {
     const { data, error } = await requireClient().storage.from('task-evidence').createSignedUrl(path, 600);
     if (error) throw error;
@@ -459,7 +465,7 @@
     getContext, createFamily, acceptInvite, createChildLogin, inviteParent, loadAppData, uploadEvidence,
     submitMission, reviewMission, requestRedemption, reviewRedemption, requestDiamondExchange, reviewDiamondExchange, saveDiamondExchangeRate, resetChildPoints,
     saveStreakRewards, adjustChildPoints, loadHistoryData,
-    publishTemplate, publishTemplateTask, saveTemplateTask, deleteTemplateTask, saveLearningMaterial, deleteLearningMaterial, saveReward,
+    publishTemplate, publishTemplateTask, saveTemplateTask, deleteTemplateTask, saveLearningMaterial, deleteLearningMaterial, saveReward, deleteReward,
     getEvidenceUrl, enablePushNotifications, disablePushNotifications, subscribe,
   };
 })();

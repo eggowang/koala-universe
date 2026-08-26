@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=27">
+  <link rel="stylesheet" href="styles.css?v=28">
 </head>
 <body>
   <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
@@ -314,8 +314,8 @@
       <label id="editorPhotoField" class="setting-row setting-row--plain"><div><strong>必须上传照片</strong><span>孩子提交时需要完成证明</span></div><input id="editorPhoto" type="checkbox"></label>
       <button id="saveEditor" class="primary-button primary-button--wide" type="button">保存</button>
       <div id="editorDeleteArea" class="editor-delete-area" hidden>
-        <button id="deleteEditor" class="danger-button editor-delete-button" type="button">删除此任务</button>
-        <p>只删除任务模板，已经发布的任务和完成记录会保留。</p>
+        <button id="deleteEditor" class="danger-button editor-delete-button" type="button">删除此项目</button>
+        <p id="editorDeleteHint">已有的历史记录会保留。</p>
       </div>
     </form>
   </dialog>
@@ -507,7 +507,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastIcon" class="toast__icon" aria-hidden="true">✓</span><span id="toastMessage"></span></div>
   <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
   <script src="config.js"></script>
-  <script src="cloud.js?v=27"></script>
-  <script src="app.js?v=27" defer></script>
+  <script src="cloud.js?v=28"></script>
+  <script src="app.js?v=28" defer></script>
 </body>
 </html>
