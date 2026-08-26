@@ -404,10 +404,9 @@
     if (error) throw error;
   }
   async function deleteReward(rewardId) {
-    const { error } = await requireClient().from('rewards').delete()
-      .eq('id', rewardId)
-      .eq('family_id', context.family_id);
+    const { data, error } = await requireClient().rpc('delete_reward', { p_reward_id: rewardId });
     if (error) throw error;
+    if (data !== true) throw new Error('REWARD_DELETE_NOT_APPLIED');
   }
   async function getEvidenceUrl(path) {
     const { data, error } = await requireClient().storage.from('task-evidence').createSignedUrl(path, 600);

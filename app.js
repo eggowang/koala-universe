@@ -905,6 +905,7 @@ async function deleteEditorItem() {
       else await window.KoalaCloud.deleteReward(id);
       $('#editorDialog').close();
       await loadCloudData();
+      if (type === 'reward' && findById(state.rewards, id)) throw new Error('REWARD_DELETE_NOT_APPLIED');
       showToast(type === 'task' ? '任务模板已删除并同步' : '奖励已删除并同步');
     } else {
       if (type === 'task') state.tasks = state.tasks.filter(entry => !sameId(entry.id, id));
@@ -1234,6 +1235,7 @@ function cloudErrorMessage(error) {
     ['PARENT_PERMISSION_REQUIRED', '只有家长可以执行这个操作'],
     ['AI_NOT_CONFIGURED', 'AI 云端参数尚未设置，请先填写环境文件并部署'],
     ['AI_EMPTY_RESPONSE', 'AI 接口已响应，但没有返回可显示的文字'],
+    ['REWARD_DELETE_NOT_APPLIED', '奖励没有从云端删除，请刷新后重试'],
   ];
   const found = messages.find(([key]) => normalized.includes(key));
   return found ? found[1] : `操作未完成：${message}`;
