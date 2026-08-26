@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=24">
+  <link rel="stylesheet" href="styles.css?v=25">
 </head>
 <body>
   <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
@@ -171,6 +171,18 @@
             <div><span class="eyebrow">积分规则</span><h2>星星与钻石</h2><p>任务的星星数在“任务设置”中逐条修改；奖励价格在下方逐条修改。</p></div>
             <label><span>兑换 1 颗钻石需要</span><span class="points-rate-input"><input id="starsPerDiamond" type="number" min="1" max="1000" value="10"><b>颗星星</b></span></label>
             <button id="saveDiamondRate" class="secondary-button" type="button">保存兑换比例</button>
+          </div>
+          <div class="point-reset-card">
+            <div>
+              <span class="eyebrow">积分管理</span>
+              <h2>清除孩子积分</h2>
+              <p>由家长选择清除星星、钻石或两项一起清除。历史流水保留，孩子端会自动同步。</p>
+            </div>
+            <div class="point-reset-balances" aria-label="孩子当前积分">
+              <span>⭐ <strong id="resetStarsBalance">0</strong> 星星</span>
+              <span>💎 <strong id="resetDiamondsBalance">0</strong> 钻石</span>
+            </div>
+            <button id="openPointReset" class="danger-button point-reset-button" type="button">选择要清除的积分</button>
           </div>
           <div class="panel-title"><div><h2>自定义奖励</h2><p>孩子申请兑换后，需家长确认。</p></div><button id="addRewardButton" class="secondary-button" type="button">＋ 新增奖励</button></div>
           <div id="manageRewardList" class="manage-list"></div>
@@ -415,10 +427,32 @@
     </form>
   </dialog>
 
+  <dialog id="pointResetDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="sheet__icon">🧭</span>
+      <h2>选择要清除的积分</h2>
+      <p>请家长核对后勾选。本次操作不会删除以前的获得和兑换记录。</p>
+      <div class="point-reset-options" role="group" aria-label="选择清除项目">
+        <label class="point-reset-option">
+          <input id="resetStarsOption" type="checkbox">
+          <span><strong>⭐ 清除星星</strong><small>当前 <b id="resetStarsDialogBalance">0</b> 颗；同时取消待确认的奖励申请</small></span>
+        </label>
+        <label class="point-reset-option">
+          <input id="resetDiamondsOption" type="checkbox">
+          <span><strong>💎 清除钻石</strong><small>当前 <b id="resetDiamondsDialogBalance">0</b> 颗；不会影响星星</small></span>
+        </label>
+      </div>
+      <p class="point-reset-note">如有待确认的钻石升级申请，本次清除也会一并取消。</p>
+      <div id="pointResetPreview" class="point-reset-preview">请至少选择一项。</div>
+      <button id="confirmPointReset" class="danger-button primary-button--wide" type="button" disabled>确认清除</button>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastIcon" class="toast__icon" aria-hidden="true">✓</span><span id="toastMessage"></span></div>
   <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
   <script src="config.js"></script>
-  <script src="cloud.js?v=24"></script>
-  <script src="app.js?v=24" defer></script>
+  <script src="cloud.js?v=25"></script>
+  <script src="app.js?v=25" defer></script>
 </body>
 </html>

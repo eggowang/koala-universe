@@ -200,6 +200,15 @@
     if (error) throw error;
     return data;
   }
+  async function resetChildPoints(childId, resetStars, resetDiamonds) {
+    const { data, error } = await requireClient().rpc('reset_child_points', {
+      p_child_id: childId,
+      p_reset_stars: Boolean(resetStars),
+      p_reset_diamonds: Boolean(resetDiamonds),
+    });
+    if (error) throw error;
+    return data;
+  }
   async function publishTemplate({ templateId, taskIds, startDate, days, collision }) {
     const { data, error } = await requireClient().rpc('publish_template_selection', {
       p_template_id: templateId,
@@ -383,7 +392,7 @@
   window.KoalaCloud = {
     isConfigured, init, getSession, onAuthStateChange, signUpParent, signInParent, signInChild, signOut,
     getContext, createFamily, acceptInvite, createChildLogin, inviteParent, loadAppData, uploadEvidence,
-    submitMission, reviewMission, requestRedemption, requestDiamondExchange, reviewDiamondExchange, saveDiamondExchangeRate,
+    submitMission, reviewMission, requestRedemption, requestDiamondExchange, reviewDiamondExchange, saveDiamondExchangeRate, resetChildPoints,
     publishTemplate, publishTemplateTask, saveTemplateTask, deleteTemplateTask, saveLearningMaterial, deleteLearningMaterial, saveReward,
     getEvidenceUrl, enablePushNotifications, disablePushNotifications, subscribe,
   };

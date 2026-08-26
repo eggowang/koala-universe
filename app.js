@@ -28,6 +28,7 @@ const state = {
   diamonds: Number(localStorage.getItem('koala-demo-diamonds') || 0),
   starsPerDiamond: Number(localStorage.getItem('koala-demo-stars-per-diamond') || 10),
   diamondExchanges: JSON.parse(localStorage.getItem('koala-demo-diamond-exchanges') || 'null') || [],
+  pointResetHistory: JSON.parse(localStorage.getItem('koala-demo-point-reset-history') || 'null') || [],
   learningMaterials: JSON.parse(localStorage.getItem('koala-demo-learning-materials') || 'null') || initialLearningMaterials,
   learningSubject: '全部',
   learningLibraryMode: 'materials',
@@ -250,6 +251,7 @@ function save() {
   localStorage.setItem('koala-demo-diamonds', String(state.diamonds));
   localStorage.setItem('koala-demo-stars-per-diamond', String(state.starsPerDiamond));
   localStorage.setItem('koala-demo-diamond-exchanges', JSON.stringify(state.diamondExchanges));
+  localStorage.setItem('koala-demo-point-reset-history', JSON.stringify(state.pointResetHistory));
   localStorage.setItem('koala-demo-learning-materials', JSON.stringify(state.learningMaterials));
 }
 function statusText(task) {
@@ -659,6 +661,8 @@ function renderSummary() {
   $('#diamondBalance').textContent = state.diamonds;
   $('#parentStars').textContent = state.stars;
   $('#parentDiamonds').textContent = state.diamonds;
+  $('#resetStarsBalance').textContent = state.stars;
+  $('#resetDiamondsBalance').textContent = state.diamonds;
   $('#doneCount').textContent = `${approved}/${state.tasks.length}`;
   $('#pendingCount').textContent = pendingTasks + pendingExchanges;
   $('#approvedCount').textContent = approved;
@@ -876,6 +880,64 @@ async function saveDiamondRate() {
     showToast(state.cloudMode ? '兑换比例已保存并同步' : '兑换比例已保存');
   } catch (error) { showToast(cloudErrorMessage(error)); }
   finally { button.disabled = false; }
+}
+function updatePointResetPreview() {
+  const resetStars = $('#resetStarsOption').checked;
+  const resetDiamonds = $('#resetDiamondsOption').checked;
+  const selected = [resetStars ? `⭐ ${state.stars} 颗星星` : '', resetDiamonds ? `💎 ${state.diamonds} 颗钻石` : ''].filter(Boolean);
+  const preview = $('#pointResetPreview');
+  const button = $('#confirmPointReset');
+  button.disabled = selected.length === 0;
+  preview.classList.toggle('is-empty', selected.length === 0);
+  preview.innerHTML = selected.length
+    ? `将清除：<strong>${selected.join('、')}</strong>。确认后余额归零，历史记录仍保留。`
+    : '请至少选择一项。';
+}
+function openPointResetDialog() {
+  if (state.cloudMode && state.context?.member_role !== 'parent') return showToast('只有家长可以清除积分', 'error');
+  $('#resetStarsOption').checked = false;
+  $('#resetDiamondsOption').checked = false;
+  $('#resetStarsDialogBalance').textContent = state.stars;
+  $('#resetDiamondsDialogBalance').textContent = state.diamonds;
+  $('#confirmPointReset').textContent = '确认清除';
+  updatePointResetPreview();
+  showDialogAtTop($('#pointResetDialog'));
+}
+async function confirmPointReset() {
+  const resetStars = $('#resetStarsOption').checked;
+  const resetDiamonds = $('#resetDiamondsOption').checked;
+  if (!resetStars && !resetDiamonds) return showToast('请至少选择一项', 'error');
+  const button = $('#confirmPointReset');
+  button.disabled = true;
+  button.textContent = '正在清除…';
+  const previousStars = state.stars;
+  const previousDiamonds = state.diamonds;
+  try {
+    if (state.cloudMode) {
+      if (state.context?.member_role !== 'parent') throw new Error('PARENT_PERMISSION_REQUIRED');
+      await window.KoalaCloud.resetChildPoints(state.context.child_id, resetStars, resetDiamonds);
+      await loadCloudData();
+    } else {
+      if (resetStars) state.stars = 0;
+      if (resetDiamonds) state.diamonds = 0;
+      state.diamondExchanges.forEach(exchange => { if (exchange.status === 'pending') exchange.status = 'rejected'; });
+      state.pointResetHistory.unshift({
+        at: new Date().toISOString(),
+        stars: resetStars ? previousStars : null,
+        diamonds: resetDiamonds ? previousDiamonds : null,
+      });
+      state.pointResetHistory = state.pointResetHistory.slice(0, 50);
+      renderAll();
+    }
+    $('#pointResetDialog').close();
+    const cleared = [resetStars ? '星星' : '', resetDiamonds ? '钻石' : ''].filter(Boolean).join('和');
+    showToast(`${cleared}已由家长清除，历史记录已保留`, 'success');
+  } catch (error) {
+    showToast(cloudErrorMessage(error), 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = '确认清除';
+  }
 }
 function showToast(message, tone = 'info') {
   const toast = $('#toast');
@@ -1260,6 +1322,10 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#deleteEditor').onclick = deleteEditorTask;
   $('#requestDiamondExchange').onclick = requestDiamondExchange;
   $('#saveDiamondRate').onclick = saveDiamondRate;
+  $('#openPointReset').onclick = openPointResetDialog;
+  $('#resetStarsOption').onchange = updatePointResetPreview;
+  $('#resetDiamondsOption').onchange = updatePointResetPreview;
+  $('#confirmPointReset').onclick = confirmPointReset;
   $('#photoInput').onchange = e => { state.pendingPhotoFile = e.target.files[0] || null; $('#submitWithPhoto').disabled = !state.pendingPhotoFile; };
   $('#submitWithPhoto').onclick = async () => { const task = findById(state.tasks, state.pendingPhotoTask); $('#photoDialog').close(); await submitTask(task, state.pendingPhotoFile); };
   $('#refreshButton').onclick = async () => {
