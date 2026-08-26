@@ -413,6 +413,9 @@ function openLearningEditor(id = null) {
   showDialogAtTop($('#learningEditorDialog'));
 }
 function openAiAssistant() {
+  const useCloudAssistant = state.cloudMode;
+  $('#aiCloudConfigCard').hidden = !useCloudAssistant;
+  $('#aiManualConfigCard').hidden = useCloudAssistant;
   $('#aiEndpoint').value = localStorage.getItem(AI_ENDPOINT_KEY) || '';
   $('#aiModel').value = localStorage.getItem(AI_MODEL_KEY) || '';
   $('#aiApiKey').value = sessionStorage.getItem(AI_API_KEY_SESSION) || '';
@@ -426,7 +429,9 @@ function openAiAssistant() {
     $('#aiResultAnswerSection').hidden = !state.aiLastAnswer;
     $('#aiResult').hidden = false;
   } else $('#aiResult').hidden = true;
-  setAuthMessage('#aiAssistantStatus', '接口信息由家长填写；生成内容先预览，再决定是否保存。');
+  setAuthMessage('#aiAssistantStatus', useCloudAssistant
+    ? 'AI 接口已由云端安全保管；生成内容先预览，再决定是否保存。'
+    : 'Demo 模式需要临时填写接口信息；生成内容先预览，再决定是否保存。');
   showDialogAtTop($('#aiAssistantDialog'));
 }
 function normalizeAiEndpoint(value) {
@@ -478,23 +483,26 @@ function aiUserPrompt(subject, type, request) {
   return `学生范围：上海小学二年级\n学科：${subject}\n资料类型：${type === 'exercise' ? '练习题' : '知识卡'}\n家长要求：${request}`;
 }
 async function generateAiMaterial() {
+  const useCloudAssistant = state.cloudMode;
   const endpointInput = $('#aiEndpoint').value.trim();
   const apiKey = $('#aiApiKey').value.trim();
   const model = $('#aiModel').value.trim();
   const subject = $('#aiSubject').value;
   const type = $('#aiMaterialType').value;
   const request = $('#aiPrompt').value.trim();
-  if (!endpointInput) return setAuthMessage('#aiAssistantStatus', '请填写 API 地址。', 'error');
-  if (!model) return setAuthMessage('#aiAssistantStatus', '请填写接口对应的模型名称。', 'error');
-  if (!apiKey) return setAuthMessage('#aiAssistantStatus', '请填写 API Key。', 'error');
+  if (!useCloudAssistant && !endpointInput) return setAuthMessage('#aiAssistantStatus', '请填写 API 地址。', 'error');
+  if (!useCloudAssistant && !model) return setAuthMessage('#aiAssistantStatus', '请填写接口对应的模型名称。', 'error');
+  if (!useCloudAssistant && !apiKey) return setAuthMessage('#aiAssistantStatus', '请填写 API Key。', 'error');
   if (!request) return setAuthMessage('#aiAssistantStatus', '请告诉 AI 想生成什么内容。', 'error');
-  let endpoint;
-  try { endpoint = normalizeAiEndpoint(endpointInput); }
-  catch (error) { return setAuthMessage('#aiAssistantStatus', error.message, 'error'); }
+  let endpoint = '';
+  if (!useCloudAssistant) {
+    try { endpoint = normalizeAiEndpoint(endpointInput); }
+    catch (error) { return setAuthMessage('#aiAssistantStatus', error.message, 'error'); }
 
-  localStorage.setItem(AI_ENDPOINT_KEY, endpointInput);
-  localStorage.setItem(AI_MODEL_KEY, model);
-  sessionStorage.setItem(AI_API_KEY_SESSION, apiKey);
+    localStorage.setItem(AI_ENDPOINT_KEY, endpointInput);
+    localStorage.setItem(AI_MODEL_KEY, model);
+    sessionStorage.setItem(AI_API_KEY_SESSION, apiKey);
+  }
   const systemPrompt = aiSystemPrompt(subject, type);
   const userPrompt = aiUserPrompt(subject, type, request);
   const isResponsesApi = /\/responses\/?(?:\?|$)/i.test(endpoint);
@@ -507,22 +515,27 @@ async function generateAiMaterial() {
   button.disabled = true;
   button.textContent = 'AI 正在生成…';
   $('#aiResult').hidden = true;
-  setAuthMessage('#aiAssistantStatus', '正在连接你填写的 AI 接口，请稍候…');
+  setAuthMessage('#aiAssistantStatus', useCloudAssistant ? '正在通过安全云端连接 AI，请稍候…' : '正在连接你填写的 AI 接口，请稍候…');
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    const raw = await response.text();
-    let data = null;
-    try { data = raw ? JSON.parse(raw) : {}; } catch { data = {}; }
-    if (!response.ok) {
-      const detail = String(data?.error?.message || data?.message || `接口返回 ${response.status}`).slice(0, 180);
-      throw new Error(detail);
+    let result = '';
+    if (useCloudAssistant) {
+      result = await window.KoalaCloud.generateAiMaterial({ subject, materialType: type, request });
+    } else {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      const raw = await response.text();
+      let data = null;
+      try { data = raw ? JSON.parse(raw) : {}; } catch { data = {}; }
+      if (!response.ok) {
+        const detail = String(data?.error?.message || data?.message || `接口返回 ${response.status}`).slice(0, 180);
+        throw new Error(detail);
+      }
+      result = aiResponseText(data);
     }
-    const result = aiResponseText(data);
     if (!result) throw new Error('接口已响应，但没有找到可显示的文字内容，请检查接口格式。');
     const parts = aiMaterialParts(result, subject);
     state.aiLastResult = parts.content;
@@ -540,9 +553,9 @@ async function generateAiMaterial() {
   } catch (error) {
     const message = error.name === 'AbortError'
       ? '请求超过 60 秒，请检查接口地址或稍后重试。'
-      : error instanceof TypeError
+      : error instanceof TypeError && !useCloudAssistant
         ? '无法从网页连接这个接口。请检查地址，并确认接口允许浏览器跨域访问（CORS）。'
-        : `调用失败：${error.message}`;
+        : `调用失败：${cloudErrorMessage(error)}`;
     setAuthMessage('#aiAssistantStatus', message, 'error');
   } finally {
     clearTimeout(timeout);
@@ -1218,6 +1231,8 @@ function cloudErrorMessage(error) {
     ['ADJUSTMENT_OUT_OF_RANGE', '每次最多调整 1000 个积分'],
     ['INSUFFICIENT_POINTS', '积分余额不足，不能扣到负数'],
     ['PARENT_PERMISSION_REQUIRED', '只有家长可以执行这个操作'],
+    ['AI_NOT_CONFIGURED', 'AI 云端参数尚未设置，请先填写环境文件并部署'],
+    ['AI_EMPTY_RESPONSE', 'AI 接口已响应，但没有返回可显示的文字'],
   ];
   const found = messages.find(([key]) => normalized.includes(key));
   return found ? found[1] : `操作未完成：${message}`;

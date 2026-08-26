@@ -202,6 +202,21 @@
     if (error) throw error;
     return data;
   }
+  async function generateAiMaterial({ subject, materialType, request }) {
+    const { data, error } = await requireClient().functions.invoke('ai-material-assistant', {
+      body: { familyId: context.family_id, subject, materialType, request },
+    });
+    if (error) {
+      let message = error.message || 'AI_ASSISTANT_FAILED';
+      try {
+        const detail = await error.context?.json();
+        if (detail?.error) message = detail.error;
+      } catch {}
+      throw new Error(message);
+    }
+    if (!data?.text) throw new Error(data?.error || 'AI_EMPTY_RESPONSE');
+    return data.text;
+  }
   async function requestDiamondExchange() {
     const { data, error } = await requireClient().rpc('request_diamond_exchange');
     if (error) throw error;
@@ -463,7 +478,7 @@
   window.KoalaCloud = {
     isConfigured, init, getSession, onAuthStateChange, signUpParent, signInParent, signInChild, signOut,
     getContext, createFamily, acceptInvite, createChildLogin, inviteParent, loadAppData, uploadEvidence,
-    submitMission, reviewMission, requestRedemption, reviewRedemption, requestDiamondExchange, reviewDiamondExchange, saveDiamondExchangeRate, resetChildPoints,
+    submitMission, reviewMission, requestRedemption, reviewRedemption, generateAiMaterial, requestDiamondExchange, reviewDiamondExchange, saveDiamondExchangeRate, resetChildPoints,
     saveStreakRewards, adjustChildPoints, loadHistoryData,
     publishTemplate, publishTemplateTask, saveTemplateTask, deleteTemplateTask, saveLearningMaterial, deleteLearningMaterial, saveReward, deleteReward,
     getEvidenceUrl, enablePushNotifications, disablePushNotifications, subscribe,

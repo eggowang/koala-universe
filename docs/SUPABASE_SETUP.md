@@ -37,6 +37,7 @@ Publishable key 可以出现在浏览器和公开 GitHub 仓库中。Secret key 
 - `invite-parent`：给第二位家长发送邀请邮件
 - `send-push`：孩子提交后提醒家长
 - `send-reminders`：定时提醒孩子完成任务
+- `ai-material-assistant`：在服务端安全调用家长配置的 AI 接口，不把 API Key 发送给网页
 
 部署需要 Supabase CLI。安装和登录属于环境配置操作，应在用户确认后进行。
 
@@ -49,9 +50,14 @@ VAPID_SUBJECT=mailto:你的邮箱
 VAPID_PUBLIC_KEY=公开的 VAPID 公钥
 VAPID_PRIVATE_KEY=私密的 VAPID 私钥
 CRON_SECRET=随机生成的长字符串
+AI_API_URL=https://你的接口地址/v1/chat/completions
+AI_API_KEY=你的私密_API_Key
+AI_MODEL=接口对应的模型名称
 ```
 
 `SUPABASE_URL`、`SUPABASE_ANON_KEY` 和 `SUPABASE_SERVICE_ROLE_KEY` 通常由 Supabase Edge Functions 运行环境提供。Secret key 只允许在服务端环境中使用。
+
+AI 参数可先填写到本机的 `supabase/functions/.env.local`。该文件已被 `.gitignore` 排除，不能提交到 GitHub。部署前需要使用 Supabase CLI 的 `secrets set --env-file`，或在 Supabase Dashboard 的 Edge Functions Secrets 页面录入；本机 `.env.local` 不会自行上传。
 
 ## 4. 配置认证地址
 

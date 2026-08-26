@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=28">
+  <link rel="stylesheet" href="styles.css?v=29">
 </head>
 <body>
   <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
@@ -345,7 +345,12 @@
       <span class="eyebrow">家长专用</span><h2>AI 学习资料助手</h2>
       <p>输入自己的接口信息，让 AI 生成适合上海小学二年级的原创练习。结果会先给家长预览，不会自动发布给孩子。</p>
 
-      <section class="ai-config-card" aria-labelledby="aiConfigTitle">
+      <section id="aiCloudConfigCard" class="ai-config-card" aria-labelledby="aiCloudConfigTitle" hidden>
+        <div class="ai-section-heading"><div><strong id="aiCloudConfigTitle">云端安全连接</strong><span>API Key 由 Supabase Edge Function 保管</span></div></div>
+        <div class="ai-security-note"><span aria-hidden="true">🔐</span><p><strong>家长不需要在手机或 iPad 重复填写 Key。</strong>网页只发送生成要求，私密 Key 不会发送到浏览器、家庭数据或 GitHub。</p></div>
+      </section>
+
+      <section id="aiManualConfigCard" class="ai-config-card" aria-labelledby="aiConfigTitle">
         <div class="ai-section-heading"><div><strong id="aiConfigTitle">接口设置</strong><span>支持 OpenAI 兼容的 Chat Completions 或 Responses 接口</span></div><button id="clearAiConfig" class="text-button" type="button">清除本机配置</button></div>
         <label class="field"><span>API 地址</span><input id="aiEndpoint" type="url" inputmode="url" autocomplete="url" placeholder="例如：https://api.example.com/v1"></label>
         <div class="form-grid ai-config-grid">
@@ -507,7 +512,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastIcon" class="toast__icon" aria-hidden="true">✓</span><span id="toastMessage"></span></div>
   <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
   <script src="config.js"></script>
-  <script src="cloud.js?v=28"></script>
-  <script src="app.js?v=28" defer></script>
+  <script src="cloud.js?v=29"></script>
+  <script src="app.js?v=29" defer></script>
 </body>
 </html>
