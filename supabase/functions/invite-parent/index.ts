@@ -14,6 +14,18 @@ function corsHeaders(req: Request) {
   }
 }
 
+async function findUserByEmail(adminClient: ReturnType<typeof createClient>, email: string) {
+  const perPage = 1000
+  for (let page = 1; page <= 20; page += 1) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage })
+    if (error) throw error
+    const user = data.users.find((item) => item.email?.trim().toLowerCase() === email)
+    if (user) return user
+    if (data.users.length < perPage) return null
+  }
+  throw new Error('USER_LOOKUP_LIMIT_REACHED')
+}
+
 Deno.serve(async (req) => {
   const cors = corsHeaders(req)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -47,6 +59,33 @@ Deno.serve(async (req) => {
       .maybeSingle()
     if (membershipError || !membership) throw new Error('PARENT_PERMISSION_REQUIRED')
 
+    const existingUser = await findUserByEmail(adminClient, email)
+    if (existingUser) {
+      const { data: existingMembership, error: existingMembershipError } = await adminClient
+        .from('family_members')
+        .select('family_id, role')
+        .eq('user_id', existingUser.id)
+        .maybeSingle()
+      if (existingMembershipError) throw existingMembershipError
+
+      if (existingMembership?.family_id === familyId) {
+        return new Response(JSON.stringify({
+          alreadyMember: true,
+          emailSent: false,
+          shareUrl: null,
+          warning: 'ALREADY_IN_FAMILY',
+        }), { headers: { ...cors, ...jsonHeaders } })
+      }
+      if (existingMembership) {
+        return new Response(JSON.stringify({
+          alreadyMember: false,
+          emailSent: false,
+          shareUrl: null,
+          warning: 'USER_ALREADY_HAS_FAMILY',
+        }), { headers: { ...cors, ...jsonHeaders } })
+      }
+    }
+
     const token = crypto.randomUUID().replaceAll('-', '') + crypto.randomUUID().replaceAll('-', '')
     const { error: inviteRowError } = await adminClient.from('parent_invites').insert({
       family_id: familyId,
@@ -57,15 +96,25 @@ Deno.serve(async (req) => {
     if (inviteRowError) throw inviteRowError
 
     const redirectTo = `${siteUrl}${siteUrl.includes('?') ? '&' : '?'}invite=${encodeURIComponent(token)}`
+    if (existingUser) {
+      return new Response(JSON.stringify({
+        alreadyMember: false,
+        emailSent: false,
+        shareUrl: redirectTo,
+        warning: 'EMAIL_ALREADY_REGISTERED',
+      }), { headers: { ...cors, ...jsonHeaders } })
+    }
+
     const { error: mailError } = await adminClient.auth.admin.inviteUserByEmail(email, {
       redirectTo,
       data: { family_invite_token: token },
     })
 
     return new Response(JSON.stringify({
+      alreadyMember: false,
       emailSent: !mailError,
       shareUrl: redirectTo,
-      warning: mailError ? 'EMAIL_ALREADY_REGISTERED_OR_SEND_FAILED' : null,
+      warning: mailError ? 'EMAIL_SEND_FAILED' : null,
     }), { headers: { ...cors, ...jsonHeaders } })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'UNKNOWN_ERROR'

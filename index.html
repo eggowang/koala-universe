@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=31">
+  <link rel="stylesheet" href="styles.css?v=32">
 </head>
 <body>
   <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
@@ -429,9 +429,14 @@
     <form method="dialog" class="sheet">
       <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
       <span class="sheet__icon">✉️</span><h2>邀请另一位家长</h2>
-      <p>邀请邮件将由 Supabase 发送，对方注册后加入同一个家庭。</p>
+      <p>未注册邮箱会收到邀请邮件；已经加入家庭的家长可直接登录。</p>
       <label class="field"><span>对方邮箱</span><input id="inviteParentEmail" type="email" autocomplete="email" placeholder="parent@example.com"></label>
       <p id="inviteResult" class="auth-message" role="status"></p>
+      <div id="inviteShareArea" class="invite-share-card" hidden>
+        <strong>改用邀请链接</strong>
+        <p>复制后发给对方；对方先登录已有账号，再打开链接即可加入家庭。</p>
+        <button id="copyParentInviteLink" class="secondary-button primary-button--wide" type="button">复制邀请链接</button>
+      </div>
       <button id="sendParentInvite" class="primary-button primary-button--wide" type="button">发送邀请</button>
     </form>
   </dialog>
@@ -512,7 +517,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastIcon" class="toast__icon" aria-hidden="true">✓</span><span id="toastMessage"></span></div>
   <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
   <script src="config.js"></script>
-  <script src="cloud.js?v=31"></script>
-  <script src="app.js?v=31" defer></script>
+  <script src="cloud.js?v=32"></script>
+  <script src="app.js?v=32" defer></script>
 </body>
 </html>

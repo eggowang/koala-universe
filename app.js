@@ -1590,18 +1590,51 @@ document.addEventListener('DOMContentLoaded', () => {
       catch (error) { showToast(cloudErrorMessage(error)); }
     } else showToast('任务已经是最新状态');
   };
-  $('#inviteParentButton').onclick = () => state.cloudMode ? $('#inviteParentDialog').showModal() : showToast('接入 Supabase 后即可发送邀请');
+  $('#inviteParentButton').onclick = () => {
+    if (!state.cloudMode) return showToast('接入 Supabase 后即可发送邀请');
+    $('#inviteShareArea').hidden = true;
+    $('#copyParentInviteLink').dataset.shareUrl = '';
+    setAuthMessage('#inviteResult', '');
+    $('#inviteParentDialog').showModal();
+  };
   $('#sendParentInvite').onclick = async () => {
     const email = $('#inviteParentEmail').value.trim();
+    if (!/^\S+@\S+\.\S+$/.test(email)) return setAuthMessage('#inviteResult', '请输入正确的邮箱地址。', 'error');
+    const button = $('#sendParentInvite');
+    button.disabled = true;
+    $('#inviteShareArea').hidden = true;
+    $('#copyParentInviteLink').dataset.shareUrl = '';
     setAuthMessage('#inviteResult', '正在发送邀请…');
     try {
       const result = await window.KoalaCloud.inviteParent(state.context.family_id, email);
-      if (result.emailSent) {
+      if (result.alreadyMember || result.warning === 'ALREADY_IN_FAMILY') {
+        setAuthMessage('#inviteResult', '这个邮箱已经是当前家庭的家长，请让对方直接登录。', 'success');
+      } else if (result.warning === 'USER_ALREADY_HAS_FAMILY') {
+        setAuthMessage('#inviteResult', '这个账号已经加入了另一个家庭，当前不能重复加入。', 'error');
+      } else if (result.emailSent) {
         $('#inviteParentDialog').close();
         $('#inviteParentEmail').value = '';
         showToast('家长邀请邮件已发送', 'success');
-      } else setAuthMessage('#inviteResult', '邮件未发送，请稍后重试。', 'error');
+      } else if (result.shareUrl) {
+        $('#copyParentInviteLink').dataset.shareUrl = result.shareUrl;
+        $('#inviteShareArea').hidden = false;
+        const message = result.warning === 'EMAIL_ALREADY_REGISTERED'
+          ? '这个邮箱已经注册但尚未加入家庭，请把邀请链接发给对方。'
+          : '邮件暂时没有发出，可以改用邀请链接。';
+        setAuthMessage('#inviteResult', message, 'error');
+      } else setAuthMessage('#inviteResult', '邀请未完成，请稍后重试。', 'error');
     } catch (error) { setAuthMessage('#inviteResult', cloudErrorMessage(error), 'error'); }
+    finally { button.disabled = false; }
+  };
+  $('#copyParentInviteLink').onclick = async () => {
+    const shareUrl = $('#copyParentInviteLink').dataset.shareUrl;
+    if (!shareUrl) return showToast('暂无可复制的邀请链接');
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      showToast('邀请链接已复制', 'success');
+    } catch {
+      setAuthMessage('#inviteResult', '浏览器未允许自动复制，请重新点击复制按钮。', 'error');
+    }
   };
   $('#childPinButton').onclick = () => {
     if (!state.cloudMode) return showToast('登录家长账号后可设置孩子 PIN');
