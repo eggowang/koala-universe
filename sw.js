@@ -1,10 +1,16 @@
-const CACHE_NAME = 'koala-universe-demo-v36';
-const APP_SHELL = ['./', './index.html', './styles.css?v=36', './app.js?v=36', './cloud.js?v=36', './config.js', './manifest.webmanifest', './app-icon.svg', './icon-192.png', './icon-512.png'];
+const CACHE_NAME = 'koala-universe-demo-v37';
+const APP_SHELL = ['./', './index.html', './styles.css?v=37', './app.js?v=37', './cloud.js?v=37', './config.js', './manifest.webmanifest', './app-icon.svg', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())));
 self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
+  // Supabase and other remote APIs must never use the app-shell cache.
+  // Caching those responses leaves both parent and child views stuck on stale data.
+  if (url.origin !== self.location.origin) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
   const networkFirst = event.request.mode === 'navigate' || url.pathname.endsWith('/config.js');
   if (networkFirst) {
     event.respondWith(fetch(event.request).then(response => {
