@@ -358,8 +358,13 @@
       p_delete_upcoming: true,
     });
     if (error) throw error;
-    if (Number(data?.deleted_templates || 0) !== 1) throw new Error('TASK_DELETE_NOT_APPLIED');
-    return data;
+    let result = data;
+    if (typeof result === 'string') {
+      try { result = JSON.parse(result); } catch {}
+    }
+    if (Array.isArray(result)) result = result[0];
+    if (Number(result?.deleted_templates || 0) !== 1) throw new Error('TASK_DELETE_NOT_APPLIED');
+    return result;
   }
   async function saveLearningMaterial(material) {
     const { data: userData, error: userError } = await requireClient().auth.getUser();
@@ -489,6 +494,8 @@
     if (!context) return null;
     if (realtimeChannel) await requireClient().removeChannel(realtimeChannel);
     realtimeChannel = requireClient().channel(`koala-family-${context.family_id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'template_tasks' }, onChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'template_sections' }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'missions', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rewards', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'redemptions', filter: `family_id=eq.${context.family_id}` }, onChange)

@@ -932,7 +932,18 @@ async function deleteEditorItem() {
       renderAll();
       showToast(type === 'task' ? '任务已删除' : '奖励已删除');
     }
-  } catch (error) { showToast(cloudErrorMessage(error)); }
+  } catch (error) {
+    const normalized = String(error?.message || error || '').toUpperCase();
+    const staleTask = state.cloudMode && type === 'task'
+      && (normalized.includes('TASK_NOT_FOUND') || normalized.includes('TASK_DELETE_NOT_APPLIED'));
+    if (staleTask) {
+      $('#editorDialog').close();
+      try {
+        await loadCloudData();
+        showToast('这项任务已从云端删除，列表已刷新');
+      } catch (refreshError) { showToast(cloudErrorMessage(refreshError), 'error'); }
+    } else showToast(cloudErrorMessage(error), 'error');
+  }
   finally { button.disabled = false; }
 }
 async function requestDiamondExchange() {
@@ -1349,10 +1360,10 @@ async function loadCloudData() {
   updateTodayLabels(taskDate);
   setSyncStatus('已同步', 'online');
 }
-async function refreshForBeijingDateChange() {
+async function refreshForBeijingDateChange(force = false) {
   const today = localIsoDate();
   updateTodayLabels(today);
-  if (today === state.loadedTaskDate) return;
+  if (!force && today === state.loadedTaskDate) return;
   state.loadedTaskDate = today;
   state.selectedHistoryDate = today;
   if (state.cloudMode) {
@@ -1739,7 +1750,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch { setAuthMessage('#parentPinResult', '当前浏览器无法安全保存 PIN', 'error'); }
   };
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) refreshForBeijingDateChange();
+    if (!document.hidden) refreshForBeijingDateChange(true);
   });
   setInterval(refreshForBeijingDateChange, 60 * 1000);
   $('#signOutButton').onclick = async () => {
