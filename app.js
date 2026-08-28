@@ -847,7 +847,7 @@ function openEditor(type, id = null) {
   $('#editorDeleteArea').hidden = !id;
   $('#deleteEditor').textContent = type === 'task' ? '删除此任务' : '删除此奖励';
   $('#editorDeleteHint').textContent = type === 'task'
-    ? '只删除任务模板，已经发布的任务和完成记录会保留。'
+    ? '删除模板时会同时移除今天及未来尚未提交的同一任务；已提交、已确认和历史记录会保留。'
     : '只从奖励列表移除，过去的兑换申请和积分记录会保留。';
   showDialogAtTop($('#editorDialog'));
 }
@@ -908,20 +908,23 @@ async function deleteEditorItem() {
   const item = findById(type === 'task' ? getManagedTasks() : state.rewards, id);
   if (!item) return showToast(type === 'task' ? '没有找到这个任务' : '没有找到这个奖励');
   const historyNote = type === 'task'
-    ? '只会删除任务模板，已经发布的任务和完成记录会保留。'
+    ? '会删除任务模板，并移除今天及未来尚未提交的同一任务。已提交、已确认和历史记录会保留。'
     : '只会从奖励列表移除，过去的兑换申请和积分记录会保留。';
   if (!window.confirm(`确定删除“${item.name}”吗？\n\n${historyNote}`)) return;
   const button = $('#deleteEditor');
   button.disabled = true;
   try {
     if (state.cloudMode) {
-      if (type === 'task') await window.KoalaCloud.deleteTemplateTask(id);
-      else await window.KoalaCloud.deleteReward(id);
+      const deleteResult = type === 'task' ? await window.KoalaCloud.deleteTemplateTask(id) : null;
+      if (type === 'reward') await window.KoalaCloud.deleteReward(id);
       $('#editorDialog').close();
       await loadCloudData();
       if (type === 'task' && findById(getManagedTasks(), id)) throw new Error('TASK_DELETE_NOT_APPLIED');
       if (type === 'reward' && findById(state.rewards, id)) throw new Error('REWARD_DELETE_NOT_APPLIED');
-      showToast(type === 'task' ? '任务模板已删除并同步' : '奖励已删除并同步');
+      if (type === 'task') {
+        const removed = Number(deleteResult?.deleted_upcoming_missions || 0);
+        showToast(removed ? `任务已删除，并移除 ${removed} 个今日或未来待办` : '任务模板已删除并同步');
+      } else showToast('奖励已删除并同步');
     } else {
       if (type === 'task') state.tasks = state.tasks.filter(entry => !sameId(entry.id, id));
       else state.rewards = state.rewards.filter(entry => !sameId(entry.id, id));
@@ -1272,6 +1275,7 @@ function cloudErrorMessage(error) {
     ['TASK_CREATE_NOT_APPLIED', '任务没有写入云端，请刷新后重试'],
     ['TASK_UPDATE_NOT_APPLIED', '任务没有被修改，可能已被另一位家长删除，请刷新后重试'],
     ['TASK_DELETE_NOT_APPLIED', '任务没有从云端删除，可能已被另一位家长处理，请刷新后重试'],
+    ['TASK_NOT_FOUND', '这个任务已不存在或不属于当前家庭，请刷新后重试'],
     ['REWARD_DELETE_NOT_APPLIED', '奖励没有从云端删除，请刷新后重试'],
   ];
   const found = messages.find(([key]) => normalized.includes(key));

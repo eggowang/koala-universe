@@ -139,7 +139,11 @@
     const sectionIds = (sectionResult.data || []).map((item) => item.id);
     let templateTasks = [];
     if (sectionIds.length) {
-      const { data, error } = await requireClient().from('template_tasks').select('*').in('section_id', sectionIds).order('sort_order');
+      const { data, error } = await requireClient().from('template_tasks').select('*')
+        .eq('family_id', ctx.family_id)
+        .eq('active', true)
+        .in('section_id', sectionIds)
+        .order('sort_order');
       if (error) throw error;
       templateTasks = data || [];
     }
@@ -349,14 +353,13 @@
     return data.id;
   }
   async function deleteTemplateTask(taskId) {
-    const { data, error } = await requireClient().from('template_tasks').delete()
-      .eq('id', taskId)
-      .eq('family_id', context.family_id)
-      .select('id')
-      .maybeSingle();
+    const { data, error } = await requireClient().rpc('delete_template_task', {
+      p_template_task_id: taskId,
+      p_delete_upcoming: true,
+    });
     if (error) throw error;
-    if (!data?.id) throw new Error('TASK_DELETE_NOT_APPLIED');
-    return data.id;
+    if (Number(data?.deleted_templates || 0) !== 1) throw new Error('TASK_DELETE_NOT_APPLIED');
+    return data;
   }
   async function saveLearningMaterial(material) {
     const { data: userData, error: userError } = await requireClient().auth.getUser();
