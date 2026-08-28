@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=37">
+  <link rel="stylesheet" href="styles.css?v=38">
 </head>
 <body>
   <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
@@ -172,6 +172,7 @@
             <button type="button" data-learning-subject="语文">语文</button>
             <button type="button" data-learning-subject="数学">数学</button>
             <button type="button" data-learning-subject="英语">英语</button>
+            <button type="button" data-learning-subject="锻炼">锻炼</button>
           </div>
           <div id="learningMaterialList" class="learning-material-list"></div>
         </div>
@@ -318,6 +319,11 @@
       <label class="field"><span>名称</span><input id="editorName" type="text" maxlength="30"></label>
       <label class="field"><span id="editorNumberLabel">星星数量</span><input id="editorNumber" type="number" min="1" max="100" value="2"></label>
       <label id="editorGroupField" class="field"><span>时间段</span><select id="editorGroup"><option>早晨</option><option>放学后</option><option>锻炼</option><option>睡前</option></select></label>
+      <label id="editorSubjectField" class="field"><span>任务学科</span><select id="editorSubject"><option value="">不关联学习资料</option><option>语文</option><option>数学</option><option>英语</option><option>锻炼</option></select></label>
+      <section id="editorMaterialField" class="task-material-picker" hidden aria-labelledby="editorMaterialHeading">
+        <div class="task-material-picker__head"><div><strong id="editorMaterialHeading">关联已保存资料</strong><span id="editorMaterialHint">选择后，孩子会在这个任务里查看资料。</span></div></div>
+        <div id="editorMaterialChoices" class="task-material-choices"></div>
+      </section>
       <label id="editorPhotoField" class="setting-row setting-row--plain"><div><strong>必须上传照片</strong><span>孩子提交时需要完成证明</span></div><input id="editorPhoto" type="checkbox"></label>
       <button id="saveEditor" class="primary-button primary-button--wide" type="button">保存</button>
       <div id="editorDeleteArea" class="editor-delete-area" hidden>
@@ -368,7 +374,7 @@
       </section>
 
       <div class="form-grid ai-prompt-grid">
-        <label><span>学科</span><select id="aiSubject"><option>语文</option><option>数学</option><option>英语</option></select></label>
+        <label><span>学科</span><select id="aiSubject"><option>语文</option><option>数学</option><option>英语</option><option>锻炼</option></select></label>
         <label><span>资料类型</span><select id="aiMaterialType"><option value="exercise">练习题</option><option value="note">知识卡</option></select></label>
       </div>
       <label class="field"><span>想让 AI 生成什么</span><textarea id="aiPrompt" rows="5" maxlength="1200" placeholder="例如：生成 5 道 100 以内加减法练习，难度循序渐进，最后附家长参考答案。"></textarea></label>
@@ -395,7 +401,7 @@
       <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
       <span class="eyebrow" id="learningEditorEyebrow">新增</span><h2 id="learningEditorTitle">新增学习资料</h2>
       <div class="form-grid">
-        <label><span>学科</span><select id="learningSubject"><option>语文</option><option>数学</option><option>英语</option></select></label>
+        <label><span>学科</span><select id="learningSubject"><option>语文</option><option>数学</option><option>英语</option><option>锻炼</option></select></label>
         <label><span>资料类型</span><select id="learningType"><option value="exercise">练习题</option><option value="note">知识卡</option><option value="link">网络链接</option></select></label>
       </div>
       <label class="field"><span>标题</span><input id="learningTitle" type="text" maxlength="60" placeholder="例如：100 以内加减法练习"></label>
@@ -524,7 +530,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastIcon" class="toast__icon" aria-hidden="true">✓</span><span id="toastMessage"></span></div>
   <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
   <script src="config.js"></script>
-  <script src="cloud.js?v=37"></script>
-  <script src="app.js?v=37" defer></script>
+  <script src="cloud.js?v=38"></script>
+  <script src="app.js?v=38" defer></script>
 </body>
 </html>

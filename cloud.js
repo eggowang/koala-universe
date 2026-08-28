@@ -105,7 +105,7 @@
     const answerQuery = ctx.member_role === 'parent'
       ? requireClient().from('learning_answers').select('*').eq('family_id', ctx.family_id).order('updated_at', { ascending: false })
       : Promise.resolve({ data: [], error: null });
-    const [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, learningResult, answerResult, templateResult, sectionResult, redemptionResult, starLedgerResult, diamondLedgerResult, streakResult] = await Promise.all([
+    const [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, learningResult, materialLinkResult, answerResult, templateResult, sectionResult, redemptionResult, starLedgerResult, diamondLedgerResult, streakResult] = await Promise.all([
       requireClient().from('missions').select('*').eq('family_id', ctx.family_id).eq('scheduled_date', date).order('sort_order'),
       requireClient().from('rewards').select('*').eq('family_id', ctx.family_id).eq('active', true).order('sort_order'),
       requireClient().rpc('current_star_balance', { p_child_id: ctx.child_id }),
@@ -113,6 +113,7 @@
       requireClient().from('diamond_exchanges').select('*').eq('family_id', ctx.family_id).eq('status', 'pending').order('requested_at', { ascending: false }),
       requireClient().from('families').select('stars_per_diamond, streak_3_bonus, streak_7_bonus, streak_30_bonus').eq('id', ctx.family_id).single(),
       requireClient().from('learning_materials').select('*').eq('family_id', ctx.family_id).eq('active', true).order('sort_order'),
+      requireClient().from('learning_material_task_links').select('*').eq('family_id', ctx.family_id),
       answerQuery,
       requireClient().from('task_templates').select('*').eq('family_id', ctx.family_id).eq('active', true).order('created_at'),
       requireClient().from('template_sections').select('*').eq('family_id', ctx.family_id).order('sort_order'),
@@ -121,8 +122,9 @@
       requireClient().from('diamond_ledger').select('id, delta, reason, created_at').eq('family_id', ctx.family_id).order('created_at', { ascending: false }).limit(80),
       requireClient().rpc('current_task_streak', { p_child_id: ctx.child_id }),
     ]);
-    for (const result of [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, learningResult, answerResult, templateResult, sectionResult, redemptionResult, starLedgerResult, diamondLedgerResult, streakResult]) if (result.error) throw result.error;
+    for (const result of [missionResult, rewardResult, balanceResult, diamondBalanceResult, exchangeResult, familyResult, learningResult, materialLinkResult, answerResult, templateResult, sectionResult, redemptionResult, starLedgerResult, diamondLedgerResult, streakResult]) if (result.error) throw result.error;
     let learningMaterials = learningResult.data || [];
+    const materialLinks = materialLinkResult.data || [];
     let learningAnswers = answerResult.data || [];
     if (ctx.member_role === 'parent' && !learningMaterials.length) {
       const seedResult = await requireClient().rpc('seed_default_learning_materials');
@@ -167,6 +169,7 @@
         ...(diamondLedgerResult.data || []).map(item => ({ ...item, currency: 'diamond' })),
       ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
       learningMaterials,
+      materialLinks,
       learningAnswers,
       templates: templateResult.data || [],
       sections: sectionResult.data || [],
@@ -320,6 +323,7 @@
       stars: task.stars,
       requires_photo: task.photo,
       icon_type: task.iconType || 'mission',
+      subject: task.subject || null,
       sort_order: task.sortOrder || 100,
       active: true,
       updated_at: new Date().toISOString(),
@@ -365,6 +369,14 @@
     if (Array.isArray(result)) result = result[0];
     if (Number(result?.deleted_templates || 0) !== 1) throw new Error('TASK_DELETE_NOT_APPLIED');
     return result;
+  }
+  async function setTaskLearningMaterials({ taskId, materialIds }) {
+    const { data, error } = await requireClient().rpc('set_task_learning_materials', {
+      p_template_task_id: taskId,
+      p_material_ids: materialIds || [],
+    });
+    if (error) throw error;
+    return Number(data || 0);
   }
   async function saveLearningMaterial(material) {
     const { data: userData, error: userError } = await requireClient().auth.getUser();
@@ -503,6 +515,7 @@
       .on('postgres_changes', { event: '*', schema: 'public', table: 'diamond_exchanges', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'diamond_ledger', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'learning_materials', filter: `family_id=eq.${context.family_id}` }, onChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'learning_material_task_links', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'learning_answers', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'streak_awards', filter: `family_id=eq.${context.family_id}` }, onChange)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'families', filter: `id=eq.${context.family_id}` }, onChange)
@@ -515,7 +528,7 @@
     getContext, createFamily, acceptInvite, createChildLogin, inviteParent, loadAppData, uploadEvidence,
     submitMission, reviewMission, requestRedemption, reviewRedemption, generateAiMaterial, requestDiamondExchange, reviewDiamondExchange, saveDiamondExchangeRate, resetChildPoints,
     saveStreakRewards, adjustChildPoints, loadHistoryData,
-    publishTemplate, publishTemplateTask, saveTemplateTask, deleteTemplateTask, saveLearningMaterial, deleteLearningMaterial, saveReward, deleteReward,
+    publishTemplate, publishTemplateTask, saveTemplateTask, deleteTemplateTask, setTaskLearningMaterials, saveLearningMaterial, deleteLearningMaterial, saveReward, deleteReward,
     getEvidenceUrl, enablePushNotifications, disablePushNotifications, subscribe,
   };
 })();

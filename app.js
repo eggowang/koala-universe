@@ -21,6 +21,7 @@ const initialLearningMaterials = [
   { id: 'demo-math-2', subject: '数学', type: 'exercise', title: '生活应用题', taskId: 3, content: '文具盒里有 24 支铅笔，借给同学 7 支，后来又放进 9 支。现在文具盒里有多少支铅笔？请写出算式和答案。', answer: '24 - 7 + 9 = 26（支）\n答：现在文具盒里有 26 支铅笔。', source: '原创练习', url: '', published: true },
   { id: 'demo-en-1', subject: '英语', type: 'note', title: 'My school bag 词汇卡', taskId: null, content: 'school bag — 书包\nbook — 书\npencil — 铅笔\nruler — 尺子\n句型：I have a pencil in my school bag.', source: '原创学习卡', url: '', published: true },
   { id: 'demo-en-2', subject: '英语', type: 'exercise', title: 'Read and choose', taskId: null, content: 'Choose the right word.\n1. I have a (book / red).\n2. This is my (pencil / happy).\n3. The ruler is (long / sing).', answer: '1. book\n2. pencil\n3. long', source: '原创练习', url: '', published: true },
+  { id: 'demo-sport-1', subject: '锻炼', type: 'note', title: '运动前热身与放松', taskId: null, content: '运动前：原地走一走、转转肩膀和脚踝，各 20 秒。\n运动中：感到头晕、疼痛或很喘时立刻停下，告诉家长。\n运动后：慢慢走一走、喝几口水，再做轻柔拉伸。', source: '家长运动安全模板', url: '', published: true },
   { id: 'demo-sh-1', subject: '综合', type: 'link', title: '沪学习官方平台', taskId: null, content: '正版数字课本、点读与同步练习需在沪学习官方平台或 App 内使用。', source: '沪学习官方网站', url: 'https://www.diyiedu.com/', published: false }
 ];
 const state = {
@@ -45,6 +46,7 @@ const state = {
   learningSubject: '全部',
   learningLibraryMode: 'materials',
   editingMaterialId: null,
+  editingTaskMaterialIds: [],
   parentUnlocked: false,
   editing: null,
   pendingPhotoTask: null,
@@ -245,16 +247,28 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
 }
 function taskSubject(task) {
+  if (['语文', '数学', '英语', '锻炼'].includes(task?.subject)) return task.subject;
   const text = `${task.name || ''}${task.group || ''}`;
   if (/数学|口算|计算|应用题/.test(text)) return '数学';
   if (/英语|单词|字母|口语/.test(text)) return '英语';
   if (/语文|阅读|写字|背诵|古诗|作文/.test(text)) return '语文';
+  if (/锻炼|运动|跳绳|跑步|体能|热身/.test(text)) return '锻炼';
   return '';
 }
 function taskLearningKey(task) { return task.templateTaskId || task.id; }
+function materialTaskIds(material) {
+  return [...new Set([material.taskId, ...(material.taskIds || [])].filter(Boolean).map(String))];
+}
+function materialLinkedToTask(material, taskId) {
+  return materialTaskIds(material).some(id => sameId(id, taskId));
+}
 function taskLearningMaterials(task) {
   const key = taskLearningKey(task);
-  return state.learningMaterials.filter(material => material.published && material.taskId && sameId(material.taskId, key));
+  return state.learningMaterials.filter(material => material.published && materialLinkedToTask(material, key));
+}
+function materialTaskSummary(material) {
+  const names = materialTaskIds(material).map(taskId => findById(getManagedTasks(), taskId)?.name).filter(Boolean);
+  return names.length ? `关联“${names.join('、')}”` : '未关联任务';
 }
 function materialTypeLabel(type) { return ({ exercise: '练习题', note: '知识卡', link: '网络资料' })[type] || '学习资料'; }
 
@@ -355,10 +369,9 @@ function renderLearningMaterials() {
     && (state.learningLibraryMode !== 'answers' || material.answer?.trim())
   );
   $('#learningMaterialList').innerHTML = materials.length ? materials.map(material => {
-    const task = material.taskId ? findById(getManagedTasks(), material.taskId) : null;
     const showingAnswer = state.learningLibraryMode === 'answers';
     const preview = showingAnswer ? material.answer : material.content;
-    return `<article class="learning-material-card ${showingAnswer ? 'is-answer-card' : ''}"><div class="learning-material-card__subject">${showingAnswer ? '答' : material.subject === '语文' ? '语' : material.subject === '数学' ? '数' : material.subject === '英语' ? '英' : '资'}</div><div class="learning-material-card__copy"><div><span class="material-type">${showingAnswer ? '家长答案' : materialTypeLabel(material.type)}</span>${showingAnswer ? '<span class="material-status answer-private-badge">仅家长可见</span>' : `<span class="material-status ${material.published ? 'is-published' : ''}">${material.published ? '已发布' : '仅家长可见'}</span>${material.answer?.trim() ? '<span class="material-status has-answer-badge">有答案</span>' : ''}`}</div><strong>${escapeHtml(material.title)}</strong><p>${escapeHtml(preview || '').replaceAll('\n', '<br>')}</p><small>${showingAnswer ? `对应${material.subject}${materialTypeLabel(material.type)}` : `来源：${escapeHtml(material.source || '家长自建')} · ${task ? `关联“${escapeHtml(task.name)}”` : '未关联任务'}`}</small></div><button class="edit" type="button" data-edit-material="${material.id}">编辑</button></article>`;
+    return `<article class="learning-material-card ${showingAnswer ? 'is-answer-card' : ''}"><div class="learning-material-card__subject">${showingAnswer ? '答' : material.subject === '语文' ? '语' : material.subject === '数学' ? '数' : material.subject === '英语' ? '英' : material.subject === '锻炼' ? '练' : '资'}</div><div class="learning-material-card__copy"><div><span class="material-type">${showingAnswer ? '家长答案' : materialTypeLabel(material.type)}</span>${showingAnswer ? '<span class="material-status answer-private-badge">仅家长可见</span>' : `<span class="material-status ${material.published ? 'is-published' : ''}">${material.published ? '已发布' : '仅家长可见'}</span>${material.answer?.trim() ? '<span class="material-status has-answer-badge">有答案</span>' : ''}`}</div><strong>${escapeHtml(material.title)}</strong><p>${escapeHtml(preview || '').replaceAll('\n', '<br>')}</p><small>${showingAnswer ? `对应${material.subject}${materialTypeLabel(material.type)}` : `来源：${escapeHtml(material.source || '家长自建')} · ${escapeHtml(materialTaskSummary(material))}`}</small></div><button class="edit" type="button" data-edit-material="${material.id}">编辑</button></article>`;
   }).join('') : state.learningLibraryMode === 'answers'
     ? '<div class="demo-note"><strong>这个学科还没有答案</strong><p>AI 生成练习或家长编辑资料时，可以把答案单独保存到这里。</p></div>'
     : '<div class="demo-note"><strong>这个学科还没有资料</strong><p>可以新增原创题目、知识卡或公开网页链接。</p></div>';
@@ -412,7 +425,7 @@ function openLearningEditor(id = null) {
   $('#learningUrl').value = material?.url || '';
   $('#learningPublished').checked = material?.published ?? true;
   $('#learningTask').innerHTML = '<option value="">暂不关联任务</option>' + getManagedTasks().map(task => `<option value="${task.id}">${escapeHtml(task.name)} · ${escapeHtml(task.group)}</option>`).join('');
-  $('#learningTask').value = material?.taskId || '';
+  $('#learningTask').value = materialTaskIds(material || {})[0] || '';
   $('#learningDeleteArea').hidden = !id;
   showDialogAtTop($('#learningEditorDialog'));
 }
@@ -482,7 +495,10 @@ function aiMaterialParts(text, subject) {
   return { title, content: contentLines.join('\n').trim(), answer };
 }
 function aiSystemPrompt(subject, type) {
-  return `你是一名严谨的小学学习助手，帮助家长为上海小学二年级学生制作${subject}${type === 'exercise' ? '原创练习题' : '原创知识卡'}。内容应符合儿童理解水平，表达清楚，难度适中，不超纲。不得声称复制教材、题库或付费学习平台的原文。第一行必须写“标题：简短标题”。${type === 'exercise' ? '接着单独写“【题目】”并列出全部题目；最后单独写“【家长参考答案】”并列出对应答案和必要的简短解析。题目区域绝不能出现答案，答案区域也不要重复完整题目。' : '接着写“【题目】”并给出知识卡内容；如果包含自测题，再在最后单独写“【家长参考答案】”，否则不要输出答案区域。'}只输出可直接给家长审阅的学习内容。`;
+  const isExercise = subject === '锻炼';
+  const contentKind = isExercise ? (type === 'exercise' ? '安全、可在家完成的运动任务' : '运动安全与动作要点知识卡') : `${type === 'exercise' ? '原创练习题' : '原创知识卡'}`;
+  const safety = isExercise ? '避免高风险动作、屏息训练、疼痛硬撑或未经成人看护的器械练习；提示家长按孩子状态调整和陪同。' : '内容应符合儿童理解水平，表达清楚，难度适中，不超纲。';
+  return `你是一名严谨的小学学习与运动助手，帮助家长为上海小学二年级学生制作${subject}${contentKind}。${safety}不得声称复制教材、题库或付费学习平台的原文。第一行必须写“标题：简短标题”。${type === 'exercise' ? '接着单独写“【题目】”并列出全部任务；最后单独写“【家长参考答案】”并列出完成标准、必要的简短解析或参考答案。题目区域绝不能出现答案，答案区域也不要重复完整题目。' : '接着写“【题目】”并给出知识卡内容；如果包含自测题，再在最后单独写“【家长参考答案】”，否则不要输出答案区域。'}只输出可直接给家长审阅的内容。`;
 }
 function aiUserPrompt(subject, type, request) {
   return `学生范围：上海小学二年级\n学科：${subject}\n资料类型：${type === 'exercise' ? '练习题' : '知识卡'}\n家长要求：${request}`;
@@ -593,16 +609,19 @@ function setQuickAiPrompt(kind) {
       '语文': '生成 5 道二年级语文基础练习，包含词语搭配、句子表达和一题短阅读，难度循序渐进。',
       '数学': '生成 5 道 100 以内加减法和生活应用题，难度循序渐进，要求写出家长参考答案。',
       '英语': '生成 5 道适合二年级的基础英语练习，包含常用单词、简单句型和选择题。',
+      '锻炼': '生成一份 10 分钟的二年级居家运动任务，包含热身、3 个简单动作和放松，写清每项次数或时长及家长完成标准。',
     },
     '错题讲解': {
       '语文': '制作一份家长可填写错题的语文讲解模板，包括易错原因、正确思路、相似练习。',
       '数学': '制作一份家长可填写错题的数学讲解模板，包括审题、分步思路、验算和相似练习。',
       '英语': '制作一份家长可填写错题的英语讲解模板，包括词义、句型、错误原因和相似练习。',
+      '锻炼': '制作一份二年级运动动作观察与调整卡，包含热身、动作要点、常见错误、休息提示和家长陪同提醒。',
     },
     '知识卡片': {
       '语文': '制作一张二年级语文知识卡，用简短规则和例子讲清一个常用语言知识点。',
       '数学': '制作一张二年级数学知识卡，用步骤和例子讲清一个 100 以内计算知识点。',
       '英语': '制作一张二年级英语知识卡，包含 6 个常用词和 2 个简单例句。',
+      '锻炼': '制作一张二年级运动安全知识卡，包含热身、喝水、休息和动作安全的简短提醒。',
     },
   };
   $('#aiMaterialType').value = kind === '知识卡片' ? 'note' : 'exercise';
@@ -835,6 +854,30 @@ function showDialogAtTop(dialog) {
     requestAnimationFrame(() => { sheet.scrollTop = 0; });
   }
 }
+function selectedEditorTaskMaterialIds() {
+  return $$('input[name="task-learning-material"]:checked', $('#editorMaterialChoices')).map(input => input.value);
+}
+function renderEditorMaterialChoices() {
+  const field = $('#editorMaterialField');
+  if (!field || state.editing?.type !== 'task') return;
+  const subject = $('#editorSubject').value;
+  const choices = $('#editorMaterialChoices');
+  if (!subject) {
+    field.hidden = true;
+    state.editingTaskMaterialIds = [];
+    return;
+  }
+  field.hidden = false;
+  const materials = state.learningMaterials.filter(material => material.subject === subject);
+  $('#editorMaterialHint').textContent = `从已保存的${subject}资料中选择；可同时关联多份资料。`;
+  choices.innerHTML = materials.length ? materials.map(material => {
+    const checked = state.editingTaskMaterialIds.some(id => sameId(id, material.id));
+    return `<label class="task-material-choice"><input type="checkbox" name="task-learning-material" value="${material.id}" ${checked ? 'checked' : ''}><span><strong>${escapeHtml(material.title)}</strong><small>${materialTypeLabel(material.type)} · ${material.published ? '已发布给孩子' : '仅家长可见'}</small></span></label>`;
+  }).join('') : `<p class="publish-task-empty">资料库里还没有${subject}资料。可先到“学习资料”新增，或使用 AI 资料助手生成。</p>`;
+  $$('input[name="task-learning-material"]', choices).forEach(input => input.onchange = () => {
+    state.editingTaskMaterialIds = selectedEditorTaskMaterialIds();
+  });
+}
 function openEditor(type, id = null) {
   state.editing = { type, id };
   const item = id ? findById(type === 'task' ? getManagedTasks() : state.rewards, id) : null;
@@ -848,6 +891,17 @@ function openEditor(type, id = null) {
   $('#editorPhoto').checked = Boolean(item?.photo);
   $('#editorGroupField').hidden = type !== 'task';
   $('#editorPhotoField').hidden = type !== 'task';
+  $('#editorSubjectField').hidden = type !== 'task';
+  if (type === 'task') {
+    $('#editorSubject').value = item?.subject || taskSubject(item || {}) || '';
+    state.editingTaskMaterialIds = item ? state.learningMaterials
+      .filter(material => materialLinkedToTask(material, item.id))
+      .map(material => material.id) : [];
+    renderEditorMaterialChoices();
+  } else {
+    $('#editorMaterialField').hidden = true;
+    state.editingTaskMaterialIds = [];
+  }
   $('#editorDeleteArea').hidden = !id;
   $('#deleteEditor').textContent = type === 'task' ? '删除此任务' : '删除此奖励';
   $('#editorDeleteHint').textContent = type === 'task'
@@ -877,9 +931,14 @@ async function saveEditor() {
           name,
           stars: number,
           photo: $('#editorPhoto').checked,
+          subject: $('#editorSubject').value || null,
           iconType: taskVisualType({ name, group }),
         });
         if (!savedId) throw new Error(id ? 'TASK_UPDATE_NOT_APPLIED' : 'TASK_CREATE_NOT_APPLIED');
+        await window.KoalaCloud.setTaskLearningMaterials({
+          taskId: savedId,
+          materialIds: selectedEditorTaskMaterialIds(),
+        });
       } else {
         const existing = id ? findById(state.rewards, id) : null;
         await window.KoalaCloud.saveReward({ id, name, cost: number, icon: existing?.icon || '🎁' });
@@ -893,8 +952,15 @@ async function saveEditor() {
   }
   if (type === 'task') {
     const item = id ? findById(state.tasks, id) : { id: Date.now(), status: 'todo', icon: '🧩' };
-    Object.assign(item, { name, stars: number, group: $('#editorGroup').value, photo: $('#editorPhoto').checked });
+    Object.assign(item, { name, stars: number, group: $('#editorGroup').value, photo: $('#editorPhoto').checked, subject: $('#editorSubject').value || null });
     if (!id) state.tasks.push(item);
+    state.learningMaterials.forEach(material => {
+      const linked = state.editingTaskMaterialIds.some(materialId => sameId(materialId, material.id));
+      const taskIds = materialTaskIds(material).filter(taskId => !sameId(taskId, item.id));
+      if (linked) taskIds.push(String(item.id));
+      material.taskIds = [...new Set(taskIds)];
+      material.taskId = material.taskIds[0] || null;
+    });
   } else {
     const item = id ? findById(state.rewards, id) : { id: Date.now(), icon: '🎁' };
     Object.assign(item, { name, cost: number });
@@ -1337,6 +1403,7 @@ async function loadCloudData() {
     stars: task.stars,
     photo: task.requires_photo,
     iconType: task.icon_type,
+    subject: task.subject || null,
     status: 'todo',
   }));
   state.tasks = data.missions.map(task => ({
@@ -1369,6 +1436,9 @@ async function loadCloudData() {
     type: material.material_type,
     title: material.title,
     taskId: material.template_task_id,
+    taskIds: [...new Set([material.template_task_id, ...(data.materialLinks || [])
+      .filter(link => sameId(link.learning_material_id, material.id))
+      .map(link => link.template_task_id)].filter(Boolean))],
     content: material.content,
     answer: (data.learningAnswers || []).find(answer => sameId(answer.material_id, material.id))?.answer_content || '',
     source: material.source_label,
@@ -1672,6 +1742,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('#saveLearningMaterial').onclick = saveLearningMaterial;
   $('#deleteLearningMaterial').onclick = deleteLearningMaterial;
+  $('#editorSubject').onchange = () => {
+    state.editingTaskMaterialIds = selectedEditorTaskMaterialIds();
+    renderEditorMaterialChoices();
+  };
   $('#saveEditor').onclick = saveEditor;
   $('#deleteEditor').onclick = deleteEditorItem;
   $('#requestDiamondExchange').onclick = requestDiamondExchange;
