@@ -126,6 +126,12 @@
           <button id="publishButton" class="primary-button" type="button">发布任务</button>
         </div>
 
+        <div id="parentSyncNotice" class="parent-sync-notice" role="status" aria-live="polite" hidden>
+          <span id="parentSyncNoticeIcon" class="parent-sync-notice__icon" aria-hidden="true">✓</span>
+          <div><strong id="parentSyncNoticeTitle">任务发布成功</strong><p id="parentSyncNoticeText"></p></div>
+          <button id="dismissParentSyncNotice" type="button" aria-label="关闭发布结果">×</button>
+        </div>
+
         <div class="parent-summary">
           <article><span>待确认</span><strong id="pendingCount">2</strong><small>项待处理</small></article>
           <article><span>今日已确认</span><strong id="approvedCount">1</strong><small>项任务</small></article>
@@ -282,6 +288,7 @@
       </section>
       <fieldset><legend>遇到已有任务时</legend><label class="radio-card"><input type="radio" name="collision" value="append" checked><span><strong>追加任务</strong><small>保留已安排内容</small></span></label><label class="radio-card"><input type="radio" name="collision" value="replace"><span><strong>替换任务</strong><small>覆盖所选日期内容</small></span></label></fieldset>
       <div class="publish-preview">已选择 <strong id="publishPreviewTasks">0 条任务</strong>，将连续发布 <strong id="publishPreviewDays">5 天</strong>，发布前仍可修改。</div>
+      <p id="publishMessage" class="auth-message" role="status" aria-live="polite"></p>
       <button id="confirmPublish" class="primary-button primary-button--wide" type="button">确认发布</button>
     </form>
   </dialog>

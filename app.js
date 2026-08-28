@@ -691,15 +691,19 @@ async function confirmQuickPublish() {
   if (!Number.isInteger(days) || days < 1 || days > 30) return setAuthMessage('#quickPublishMessage', '连续天数应为 1 到 30 天', 'error');
   const button = $('#confirmQuickPublish');
   button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = '正在发布…';
   setAuthMessage('#quickPublishMessage', '正在发布…');
   try {
     const created = await window.KoalaCloud.publishTemplateTask({ templateTaskId: task.id, scheduledDate, days });
     if (!created) return setAuthMessage('#quickPublishMessage', '所选日期已经发布过这个任务', 'error');
     $('#quickPublishDialog').close();
     await loadCloudData();
-    showToast(`“${task.name}”已发布 ${created} 天`);
+    const dateRange = publishDateRangeText(scheduledDate, days);
+    showParentSyncNotice(`“${task.name}”已新增 ${created} 项，日期：${dateRange}。孩子端会自动同步。`);
+    showToast(`发布成功：新增 ${created} 项任务`, 'success');
   } catch (error) { setAuthMessage('#quickPublishMessage', cloudErrorMessage(error), 'error'); }
-  finally { button.disabled = false; }
+  finally { button.disabled = false; button.textContent = originalText; }
 }
 function renderSummary() {
   const pendingTasks = state.tasks.filter(t => t.status === 'submitted').length;
@@ -1218,6 +1222,21 @@ function showToast(message, tone = 'info') {
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => toast.classList.remove('is-visible'), 2600);
 }
+function showParentSyncNotice(message, tone = 'success', title = '任务发布成功') {
+  const notice = $('#parentSyncNotice');
+  if (!notice) return;
+  notice.hidden = false;
+  notice.dataset.tone = tone;
+  $('#parentSyncNoticeIcon').textContent = tone === 'error' ? '!' : '✓';
+  $('#parentSyncNoticeTitle').textContent = title;
+  $('#parentSyncNoticeText').textContent = message;
+}
+function publishDateRangeText(startDate, days) {
+  const start = formatAppDateLabel(startDate);
+  if (days <= 1) return start;
+  const endDate = localIsoDate(addDays(parseIsoDate(startDate), days - 1));
+  return `${start} 至 ${formatAppDateLabel(endDate)}`;
+}
 function celebrate() {
   const el = $('#celebration');
   const spans = $$('span', el); spans[0].style.setProperty('--x', -1); spans[2].style.setProperty('--x', 1);
@@ -1566,6 +1585,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   $('#publishButton').onclick = () => {
     $('#publishStartDate').value = localIsoDate();
+    setAuthMessage('#publishMessage', '');
     renderPublishTaskChoices();
     showDialogAtTop($('#publishDialog'));
   };
@@ -1588,22 +1608,38 @@ document.addEventListener('DOMContentLoaded', () => {
     const taskIds = selectedPublishTaskIds();
     if (!taskIds.length) return showToast('请至少选择一条任务');
     if (!Number.isInteger(days) || days < 1 || days > 30) return showToast('连续天数应为 1 到 30 天');
-    if (!state.cloudMode) { $('#publishDialog').close(); return showToast(`已模拟发布 ${taskIds.length} 条任务，共 ${days} 天`); }
+    if (!state.cloudMode) {
+      $('#publishDialog').close();
+      const message = `Demo 已模拟发布 ${taskIds.length * days} 项，日期：${publishDateRangeText($('#publishStartDate').value, days)}。`;
+      showParentSyncNotice(message);
+      return showToast('Demo 发布成功', 'success');
+    }
     const button = $('#confirmPublish');
     button.disabled = true;
     const originalText = button.textContent;
     button.textContent = '正在发布…';
+    setAuthMessage('#publishMessage', '正在发布，请稍候…');
     try {
       const template = state.templates[0];
-      if (!template) return showToast('请先创建一个任务模板');
+      if (!template) return setAuthMessage('#publishMessage', '请先创建一个任务模板', 'error');
       const collision = $('input[name="collision"]:checked').value;
-      const count = await window.KoalaCloud.publishTemplate({ templateId: template.id, taskIds, startDate: $('#publishStartDate').value, days, collision });
+      const startDate = $('#publishStartDate').value;
+      if (!startDate) return setAuthMessage('#publishMessage', '请选择开始日期', 'error');
+      const count = Number(await window.KoalaCloud.publishTemplate({ templateId: template.id, taskIds, startDate, days, collision }) || 0);
+      if (!count) return setAuthMessage('#publishMessage', '没有新增任务：所选日期可能已经发布过相同任务', 'error');
       $('#publishDialog').close();
       await loadCloudData();
-      showToast(`已发布 ${count} 项任务`);
-    } catch (error) { showToast(cloudErrorMessage(error)); }
+      const dateRange = publishDateRangeText(startDate, days);
+      showParentSyncNotice(`已新增 ${count} 项，日期：${dateRange}。孩子端会自动同步。`);
+      showToast(`发布成功：新增 ${count} 项任务`, 'success');
+    } catch (error) {
+      const message = cloudErrorMessage(error);
+      setAuthMessage('#publishMessage', message, 'error');
+      showParentSyncNotice(message, 'error', '任务发布失败');
+    }
     finally { button.disabled = false; button.textContent = originalText; }
   };
+  $('#dismissParentSyncNotice').onclick = () => { $('#parentSyncNotice').hidden = true; };
   $('#addTaskButton').onclick = () => openEditor('task');
   $('#addRewardButton').onclick = () => openEditor('reward');
   $('#addLearningMaterial').onclick = () => openLearningEditor();
@@ -1755,7 +1791,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(refreshForBeijingDateChange, 60 * 1000);
   setInterval(() => {
     if (state.cloudMode && !document.hidden) queueRealtimeRefresh();
-  }, 30 * 1000);
+  }, 15 * 1000);
   $('#signOutButton').onclick = async () => {
     try {
       await window.KoalaCloud.signOut();
