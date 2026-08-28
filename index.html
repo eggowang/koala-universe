@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=32">
+  <link rel="stylesheet" href="styles.css?v=33">
 </head>
 <body>
   <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
@@ -101,7 +101,7 @@
         </div>
 
         <div class="section-heading">
-          <div><span class="eyebrow">8 月 25 日 · 星期二</span><h2>今日任务</h2></div>
+          <div><span id="childTodayHeading" class="eyebrow">今日 · 北京时间</span><h2>今日任务</h2></div>
           <button id="refreshButton" class="text-button" type="button">刷新</button>
         </div>
         <div id="taskGroups" class="task-groups"></div>
@@ -270,7 +270,7 @@
       <div class="form-grid">
         <label><span>使用模板</span><select><option>上学日模板</option><option>周末模板</option><option>假期模板</option></select></label>
         <label><span>发布方式</span><select id="publishRange"><option>连续几天</option><option>仅一天</option><option>指定日期范围</option><option>按星期重复</option></select></label>
-        <label><span>开始日期</span><input id="publishStartDate" type="date" value="2026-08-25"></label>
+        <label><span>开始日期（北京时间）</span><input id="publishStartDate" type="date"></label>
         <label><span>连续天数</span><input id="publishDays" type="number" min="1" max="30" value="5"></label>
       </div>
       <section class="publish-task-picker" aria-labelledby="publishTaskPickerTitle">
@@ -296,7 +296,7 @@
         <button type="button" data-quick-date-offset="1">明天</button>
       </div>
       <div class="form-grid">
-        <label><span>开始日期</span><input id="quickPublishDate" type="date"></label>
+        <label><span>开始日期（北京时间）</span><input id="quickPublishDate" type="date"></label>
         <label><span>连续天数</span><input id="quickPublishDays" type="number" min="1" max="30" value="1"></label>
       </div>
       <p id="quickPublishMessage" class="auth-message" role="status"></p>
@@ -517,7 +517,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastIcon" class="toast__icon" aria-hidden="true">✓</span><span id="toastMessage"></span></div>
   <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
   <script src="config.js"></script>
-  <script src="cloud.js?v=32"></script>
-  <script src="app.js?v=32" defer></script>
+  <script src="cloud.js?v=33"></script>
+  <script src="app.js?v=33" defer></script>
 </body>
 </html>

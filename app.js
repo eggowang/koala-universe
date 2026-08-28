@@ -1,3 +1,5 @@
+const APP_TIME_ZONE = 'Asia/Shanghai';
+
 const initialTasks = [
   { id: 1, group: '早晨', icon: '☀️', name: '整理床铺和书包', stars: 1, photo: false, status: 'approved' },
   { id: 2, group: '放学后', icon: '📚', name: '完成语文作业', stars: 3, photo: true, status: 'submitted' },
@@ -36,8 +38,9 @@ const state = {
   streakAwardDates: JSON.parse(localStorage.getItem('koala-demo-streak-award-dates') || 'null') || [],
   historyMissions: JSON.parse(localStorage.getItem('koala-demo-history-missions') || 'null') || [],
   historyPointLedger: [],
-  historyMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+  historyMonth: (() => { const today = parseIsoDate(localIsoDate()); return new Date(today.getFullYear(), today.getMonth(), 1); })(),
   selectedHistoryDate: localIsoDate(),
+  loadedTaskDate: localIsoDate(),
   learningMaterials: JSON.parse(localStorage.getItem('koala-demo-learning-materials') || 'null') || initialLearningMaterials,
   learningSubject: '全部',
   learningLibraryMode: 'materials',
@@ -278,7 +281,7 @@ function statusText(task) {
   return task.photo ? '完成后需上传照片' : '完成后提交家长确认';
 }
 function renderTasks() {
-  $('#taskGroups').innerHTML = getTaskGroups().map(group => {
+  const content = getTaskGroups().map(group => {
     const tasks = state.tasks.filter(t => t.group === group);
     if (!tasks.length) return '';
     return `<section class="task-group"><div class="task-group__title"><div><span>${groupIcons[group] || '🪐'}</span><h3>${escapeHtml(group)}</h3></div><span>${tasks.length} 项</span></div>${tasks.map(task => {
@@ -286,6 +289,7 @@ function renderTasks() {
       return `<div class="task-item is-${task.status}" data-task-id="${task.id}">${taskArt(task)}<button class="task-item__check" type="button" aria-label="提交${escapeHtml(task.name)}">${task.status === 'approved' ? '✓' : task.status === 'submitted' ? '…' : ''}</button><div class="task-item__content"><strong>${escapeHtml(task.name)}</strong><span>${statusText(task)}</span>${materials.length ? `<button class="task-learning-link" type="button" data-open-learning="${task.id}">📘 查看 ${materials.length} 份题目与资料</button>` : ''}</div><span class="task-item__stars">⭐ ${task.stars}</span></div>`;
     }).join('')}</section>`;
   }).join('');
+  $('#taskGroups').innerHTML = content || `<div class="today-empty-state"><span aria-hidden="true">🛰️</span><div><strong>今天还没有任务</strong><p>${escapeHtml(formatAppDateLabel(state.loadedTaskDate || localIsoDate()))}暂无已发布任务，请家长选择任务并发布到今天。</p></div></div>`;
   $$('.task-item__check').forEach(button => button.addEventListener('click', handleTaskSubmit));
   $$('[data-open-learning]').forEach(button => button.onclick = () => openLearningViewer(button.dataset.openLearning));
   renderSummary();
@@ -852,13 +856,18 @@ async function saveEditor() {
   const name = $('#editorName').value.trim();
   if (!name) return showToast('请填写名称');
   const number = Math.max(1, Number($('#editorNumber').value) || 1);
+  const button = $('#saveEditor');
+  if (button.disabled) return;
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = '正在保存…';
   if (state.cloudMode) {
     try {
       if (type === 'task') {
         const group = $('#editorGroup').value;
         const section = state.sections.find(item => item.name === group);
         if (!section) return showToast('请先设置对应时间段');
-        await window.KoalaCloud.saveTemplateTask({
+        const savedId = await window.KoalaCloud.saveTemplateTask({
           id,
           sectionId: section.id,
           name,
@@ -866,14 +875,17 @@ async function saveEditor() {
           photo: $('#editorPhoto').checked,
           iconType: taskVisualType({ name, group }),
         });
+        if (!savedId) throw new Error(id ? 'TASK_UPDATE_NOT_APPLIED' : 'TASK_CREATE_NOT_APPLIED');
       } else {
         const existing = id ? findById(state.rewards, id) : null;
         await window.KoalaCloud.saveReward({ id, name, cost: number, icon: existing?.icon || '🎁' });
       }
       $('#editorDialog').close();
       await loadCloudData();
-      return showToast('已保存并同步');
-    } catch (error) { return showToast(cloudErrorMessage(error)); }
+      showToast('已保存并同步');
+    } catch (error) { showToast(cloudErrorMessage(error), 'error'); }
+    finally { button.disabled = false; button.textContent = originalText; }
+    return;
   }
   if (type === 'task') {
     const item = id ? findById(state.tasks, id) : { id: Date.now(), status: 'todo', icon: '🧩' };
@@ -887,6 +899,8 @@ async function saveEditor() {
   $('#editorDialog').close();
   renderAll();
   showToast('已保存');
+  button.disabled = false;
+  button.textContent = originalText;
 }
 async function deleteEditorItem() {
   const { type, id } = state.editing || {};
@@ -905,6 +919,7 @@ async function deleteEditorItem() {
       else await window.KoalaCloud.deleteReward(id);
       $('#editorDialog').close();
       await loadCloudData();
+      if (type === 'task' && findById(getManagedTasks(), id)) throw new Error('TASK_DELETE_NOT_APPLIED');
       if (type === 'reward' && findById(state.rewards, id)) throw new Error('REWARD_DELETE_NOT_APPLIED');
       showToast(type === 'task' ? '任务模板已删除并同步' : '奖励已删除并同步');
     } else {
@@ -994,7 +1009,7 @@ function renderPointLedger() {
   $('#pointLedgerList').innerHTML = entries.length ? entries.map(item => {
     const currency = item.currency === 'diamond' ? '💎' : '⭐';
     const createdAt = item.createdAt || item.created_at;
-    const dateText = createdAt ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(createdAt)) : '刚刚';
+    const dateText = createdAt ? new Intl.DateTimeFormat('zh-CN', { timeZone: APP_TIME_ZONE, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(createdAt)) : '刚刚';
     return `<article class="point-ledger-item"><span class="point-ledger-item__icon">${currency}</span><div><strong>${escapeHtml(item.reason || '积分调整')}</strong><small>${dateText}</small></div><span class="point-ledger-item__delta ${item.delta > 0 ? 'is-positive' : 'is-negative'}">${item.delta > 0 ? '+' : ''}${item.delta} ${currency}</span></article>`;
   }).join('') : '<div class="demo-note"><strong>暂时没有积分明细</strong><p>任务确认、奖励兑换和家长调整后会显示在这里。</p></div>';
 }
@@ -1196,11 +1211,29 @@ function celebrate() {
   setTimeout(() => el.classList.remove('is-visible'), 1000);
 }
 
-function localIsoDate(date = new Date()) {
+function localIsoDate(date) {
+  if (!(date instanceof Date)) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: APP_TIME_ZONE,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(new Date());
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  }
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+function formatAppDateLabel(isoDate) {
+  const date = parseIsoDate(isoDate);
+  const weekday = ['日', '一', '二', '三', '四', '五', '六'][date.getDay()];
+  return `${date.getMonth() + 1} 月 ${date.getDate()} 日 · 星期${weekday}`;
+}
+function updateTodayLabels(isoDate = state.loadedTaskDate || localIsoDate()) {
+  const date = parseIsoDate(isoDate);
+  $('#todayLabel').textContent = `${date.getMonth() + 1} 月 ${date.getDate()} 日 · 北京时间`;
+  $('#childTodayHeading').textContent = formatAppDateLabel(isoDate);
 }
 function setSyncStatus(text, tone = 'online') {
   const status = $('#syncStatus');
@@ -1235,6 +1268,10 @@ function cloudErrorMessage(error) {
     ['PARENT_PERMISSION_REQUIRED', '只有家长可以执行这个操作'],
     ['AI_NOT_CONFIGURED', 'AI 云端参数尚未设置，请先填写环境文件并部署'],
     ['AI_EMPTY_RESPONSE', 'AI 接口已响应，但没有返回可显示的文字'],
+    ['TASK_ALREADY_EXISTS', '这个时间段已经有同名任务，请直接编辑原任务'],
+    ['TASK_CREATE_NOT_APPLIED', '任务没有写入云端，请刷新后重试'],
+    ['TASK_UPDATE_NOT_APPLIED', '任务没有被修改，可能已被另一位家长删除，请刷新后重试'],
+    ['TASK_DELETE_NOT_APPLIED', '任务没有从云端删除，可能已被另一位家长处理，请刷新后重试'],
     ['REWARD_DELETE_NOT_APPLIED', '奖励没有从云端删除，请刷新后重试'],
   ];
   const found = messages.find(([key]) => normalized.includes(key));
@@ -1249,9 +1286,11 @@ function setAuthMessage(selector, message, type = '') {
 async function loadCloudData() {
   if (!state.cloudMode) return;
   setSyncStatus('正在同步…', 'busy');
-  const data = await window.KoalaCloud.loadAppData(localIsoDate());
+  const taskDate = localIsoDate();
+  const data = await window.KoalaCloud.loadAppData(taskDate);
   if (!data.context) return;
   state.context = data.context;
+  state.loadedTaskDate = taskDate;
   state.templates = data.templates;
   state.sections = data.sections;
   const sectionById = Object.fromEntries(data.sections.map(section => [section.id, section]));
@@ -1303,7 +1342,19 @@ async function loadCloudData() {
     published: material.published,
   }));
   renderAll();
+  updateTodayLabels(taskDate);
   setSyncStatus('已同步', 'online');
+}
+async function refreshForBeijingDateChange() {
+  const today = localIsoDate();
+  updateTodayLabels(today);
+  if (today === state.loadedTaskDate) return;
+  state.loadedTaskDate = today;
+  state.selectedHistoryDate = today;
+  if (state.cloudMode) {
+    try { await loadCloudData(); }
+    catch (error) { setSyncStatus(cloudErrorMessage(error), 'error'); }
+  } else renderAll();
 }
 function queueRealtimeRefresh() {
   clearTimeout(state.realtimeRefreshTimer);
@@ -1368,14 +1419,16 @@ async function initializeCloudMode() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  const date = new Date();
+  const today = localIsoDate();
+  const date = parseIsoDate(today);
   ['pinInput', 'childLoginPin', 'setupChildPin', 'setupChildPinConfirm', 'setupParentPin', 'setupParentPinConfirm', 'newChildPin', 'newChildPinConfirm', 'newParentPin', 'newParentPinConfirm'].forEach(id => {
     const input = $(`#${id}`);
     if (input) input.oninput = () => { input.value = input.value.replace(/\D/g, '').slice(0, 4); };
   });
   $('#childFamilyCode').oninput = event => { event.target.value = formatFamilyCode(event.target.value); };
-  $('#todayLabel').textContent = `${date.getMonth() + 1} 月 ${date.getDate()} 日 · 考拉`;
-  $('#publishStartDate').value = localIsoDate(date);
+  state.loadedTaskDate = today;
+  updateTodayLabels(today);
+  $('#publishStartDate').value = today;
   renderAll();
   setTimeout(() => $('#splash').classList.add('is-hidden'), 2400);
   $('#skipSplash').onclick = () => $('#splash').classList.add('is-hidden');
@@ -1502,8 +1555,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showDialogAtTop($('#publishDialog'));
   };
   $$('[data-quick-date-offset]').forEach(button => button.onclick = () => {
-    const date = new Date();
-    date.setDate(date.getDate() + Number(button.dataset.quickDateOffset));
+    const date = addDays(parseIsoDate(localIsoDate()), Number(button.dataset.quickDateOffset));
     $('#quickPublishDate').value = localIsoDate(date);
     setAuthMessage('#quickPublishMessage', button.dataset.quickDateOffset === '0' ? '将发布到今天。' : '将从明天开始发布。');
   });
@@ -1682,6 +1734,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (openParentAfterSave) switchView('parent');
     } catch { setAuthMessage('#parentPinResult', '当前浏览器无法安全保存 PIN', 'error'); }
   };
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) refreshForBeijingDateChange();
+  });
+  setInterval(refreshForBeijingDateChange, 60 * 1000);
   $('#signOutButton').onclick = async () => {
     try {
       await window.KoalaCloud.signOut();

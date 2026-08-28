@@ -320,17 +320,43 @@
       active: true,
       updated_at: new Date().toISOString(),
     };
-    const query = task.id
-      ? requireClient().from('template_tasks').update(payload).eq('id', task.id)
-      : requireClient().from('template_tasks').insert(payload);
-    const { error } = await query;
+    if (!task.id) {
+      const { data: duplicate, error: duplicateError } = await requireClient()
+        .from('template_tasks')
+        .select('id')
+        .eq('family_id', context.family_id)
+        .eq('section_id', task.sectionId)
+        .eq('title', task.name)
+        .eq('active', true)
+        .limit(1)
+        .maybeSingle();
+      if (duplicateError) throw duplicateError;
+      if (duplicate) throw new Error('TASK_ALREADY_EXISTS');
+      const { data, error } = await requireClient().from('template_tasks')
+        .insert(payload).select('id').single();
+      if (error) throw error;
+      if (!data?.id) throw new Error('TASK_CREATE_NOT_APPLIED');
+      return data.id;
+    }
+    const { data, error } = await requireClient().from('template_tasks')
+      .update(payload)
+      .eq('id', task.id)
+      .eq('family_id', context.family_id)
+      .select('id')
+      .maybeSingle();
     if (error) throw error;
+    if (!data?.id) throw new Error('TASK_UPDATE_NOT_APPLIED');
+    return data.id;
   }
   async function deleteTemplateTask(taskId) {
-    const { error } = await requireClient().from('template_tasks').delete()
+    const { data, error } = await requireClient().from('template_tasks').delete()
       .eq('id', taskId)
-      .eq('family_id', context.family_id);
+      .eq('family_id', context.family_id)
+      .select('id')
+      .maybeSingle();
     if (error) throw error;
+    if (!data?.id) throw new Error('TASK_DELETE_NOT_APPLIED');
+    return data.id;
   }
   async function saveLearningMaterial(material) {
     const { data: userData, error: userError } = await requireClient().auth.getUser();
