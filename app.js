@@ -1753,6 +1753,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!document.hidden) refreshForBeijingDateChange(true);
   });
   setInterval(refreshForBeijingDateChange, 60 * 1000);
+  setInterval(() => {
+    if (state.cloudMode && !document.hidden) queueRealtimeRefresh();
+  }, 30 * 1000);
   $('#signOutButton').onclick = async () => {
     try {
       await window.KoalaCloud.signOut();
