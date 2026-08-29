@@ -47,6 +47,7 @@ const state = {
   learningLibraryMode: 'materials',
   editingMaterialId: null,
   editingTaskMaterialIds: [],
+  editingSectionId: null,
   parentUnlocked: false,
   editing: null,
   pendingPhotoTask: null,
@@ -77,9 +78,25 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const defaultTaskGroups = ['早晨', '放学后', '锻炼', '睡前'];
 const groupIcons = { '早晨': '☀️', '放学后': '🛰️', '锻炼': '🏃', '睡前': '🌙' };
+const defaultSectionReminderTimes = { '早晨': '07:00', '放学后': '17:30', '锻炼': '19:00', '睡前': '21:00' };
+if (!state.sections.length) {
+  state.sections = defaultTaskGroups.map((name, index) => ({
+    id: `demo-section-${index + 1}`,
+    name,
+    sort_order: (index + 1) * 10,
+    reminder_time: defaultSectionReminderTimes[name] || null,
+  }));
+}
 
 function sameId(a, b) { return String(a) === String(b); }
 function findById(items, id) { return items.find(item => sameId(item.id, id)); }
+function halfStep(value, minimum = 0) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  const normalized = Math.round(number * 2) / 2;
+  return normalized >= minimum && Math.abs(normalized - number) < 0.000001 ? normalized : null;
+}
+function pointText(value) { return Number.isInteger(Number(value)) ? String(Number(value)) : Number(value).toFixed(1); }
 const PARENT_PIN_KEY = 'koala-parent-pin-v2';
 const LEGACY_PARENT_PIN_KEY = 'koala-parent-pin';
 const AI_ENDPOINT_KEY = 'koala-ai-endpoint-v1';
@@ -360,6 +377,17 @@ function renderManageLists() {
   $$('[data-edit-task]').forEach(button => button.onclick = () => openEditor('task', button.dataset.editTask));
   $$('[data-quick-publish]').forEach(button => button.onclick = () => openQuickPublishTask(button.dataset.quickPublish));
   $$('[data-edit-reward]').forEach(button => button.onclick = () => openEditor('reward', button.dataset.editReward));
+}
+function reminderTimeText(value) {
+  return value ? `提醒 ${String(value).slice(0, 5)}` : '不发送定时提醒';
+}
+function renderManageSections() {
+  const sections = [...state.sections].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+  $('#manageSectionList').innerHTML = sections.map(section => {
+    const taskCount = getManagedTasks().filter(task => sameId(task.sectionId, section.id) || task.group === section.name).length;
+    return `<article class="manage-item"><div><strong>${escapeHtml(section.name)}</strong><span>${reminderTimeText(section.reminder_time)} · ${taskCount} 条任务</span></div><button class="edit" type="button" data-edit-section="${section.id}">编辑</button></article>`;
+  }).join('') || '<div class="demo-note"><strong>还没有时间段</strong><p>先新增一个时间段，再把任务安排进去。</p></div>';
+  $$('[data-edit-section]').forEach(button => button.onclick = () => openSectionEditor(button.dataset.editSection));
 }
 function renderLearningMaterials() {
   $$('[data-learning-library]').forEach(button => button.classList.toggle('is-active', button.dataset.learningLibrary === state.learningLibraryMode));
@@ -753,7 +781,7 @@ function renderSummary() {
   $('#childExchangePending').textContent = pendingExchanges ? `已有 ${pendingExchanges} 个申请等待家长确认` : '由家长设置兑换比例，确认后才会生效';
   $('#missionSummary').textContent = `今天有 ${state.tasks.length} 个任务，完成后请爸爸妈妈确认。`;
 }
-function renderAll() { renderTasks(); renderRewards(); renderReview(); renderManageLists(); renderLearningMaterials(); renderPointLedger(); renderGrowthPanel(); save(); }
+function renderAll() { renderTasks(); renderRewards(); renderReview(); renderManageLists(); renderManageSections(); renderLearningMaterials(); renderPointLedger(); renderGrowthPanel(); save(); }
 
 function handleTaskSubmit(event) {
   const task = findById(state.tasks, event.currentTarget.closest('[data-task-id]').dataset.taskId);
@@ -878,6 +906,81 @@ function renderEditorMaterialChoices() {
     state.editingTaskMaterialIds = selectedEditorTaskMaterialIds();
   });
 }
+function openSectionEditor(id = null) {
+  state.editingSectionId = id;
+  const section = id ? findById(state.sections, id) : null;
+  $('#sectionEditorEyebrow').textContent = id ? '编辑' : '新增';
+  $('#sectionEditorTitle').textContent = `${id ? '编辑' : '新增'}时间段`;
+  $('#sectionName').value = section?.name || '';
+  $('#sectionReminderTime').value = section?.reminder_time ? String(section.reminder_time).slice(0, 5) : '';
+  const taskCount = section ? getManagedTasks().filter(task => sameId(task.sectionId, section.id) || task.group === section.name).length : 0;
+  $('#sectionDeleteArea').hidden = !id;
+  $('#deleteSection').disabled = taskCount > 0;
+  $('#sectionDeleteHint').textContent = taskCount
+    ? `这个时间段还有 ${taskCount} 条任务。请先把任务移动到其他时间段或删除任务，才能删除。`
+    : '删除空时间段不会影响已发布的历史任务。';
+  showDialogAtTop($('#sectionEditorDialog'));
+}
+async function saveSectionEditor() {
+  const id = state.editingSectionId;
+  const name = $('#sectionName').value.trim();
+  const reminderTime = $('#sectionReminderTime').value || null;
+  if (!name) return showToast('请填写时间段名称', 'error');
+  const duplicate = state.sections.some(section => !sameId(section.id, id) && section.name === name);
+  if (duplicate) return showToast('已有同名时间段，请换一个名称', 'error');
+  const button = $('#saveSection');
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = '正在保存…';
+  try {
+    if (state.cloudMode) {
+      const template = state.templates[0];
+      if (!template) throw new Error('TEMPLATE_NOT_FOUND');
+      await window.KoalaCloud.saveTemplateSection({
+        id,
+        templateId: template.id,
+        name,
+        reminderTime,
+        sortOrder: id ? findById(state.sections, id)?.sort_order : ((Math.max(0, ...state.sections.map(section => Number(section.sort_order || 0))) || 0) + 10),
+      });
+      $('#sectionEditorDialog').close();
+      await loadCloudData();
+      showToast('时间段已保存，之后新发布的任务会使用新的提醒时间', 'success');
+    } else {
+      const section = id ? findById(state.sections, id) : { id: `demo-section-${Date.now()}`, sort_order: (Math.max(0, ...state.sections.map(item => Number(item.sort_order || 0))) || 0) + 10 };
+      Object.assign(section, { name, reminder_time: reminderTime });
+      if (!id) state.sections.push(section);
+      $('#sectionEditorDialog').close();
+      renderAll();
+      showToast('时间段已保存', 'success');
+    }
+  } catch (error) { showToast(cloudErrorMessage(error), 'error'); }
+  finally { button.disabled = false; button.textContent = originalText; }
+}
+async function deleteSectionEditor() {
+  const id = state.editingSectionId;
+  const section = findById(state.sections, id);
+  if (!section) return;
+  const taskCount = getManagedTasks().filter(task => sameId(task.sectionId, section.id) || task.group === section.name).length;
+  if (taskCount) return showToast('请先移动或删除该时间段中的任务', 'error');
+  if (!window.confirm(`确定删除“${section.name}”时间段吗？\n\n已发布的历史任务不会受影响。`)) return;
+  const button = $('#deleteSection');
+  button.disabled = true;
+  try {
+    if (state.cloudMode) {
+      await window.KoalaCloud.deleteTemplateSection(id);
+      $('#sectionEditorDialog').close();
+      await loadCloudData();
+      showToast('时间段已删除', 'success');
+    } else {
+      state.sections = state.sections.filter(item => !sameId(item.id, id));
+      $('#sectionEditorDialog').close();
+      renderAll();
+      showToast('时间段已删除', 'success');
+    }
+  } catch (error) { showToast(cloudErrorMessage(error), 'error'); }
+  finally { button.disabled = false; }
+}
 function openEditor(type, id = null) {
   state.editing = { type, id };
   const item = id ? findById(type === 'task' ? getManagedTasks() : state.rewards, id) : null;
@@ -913,7 +1016,8 @@ async function saveEditor() {
   const { type, id } = state.editing;
   const name = $('#editorName').value.trim();
   if (!name) return showToast('请填写名称');
-  const number = Math.max(1, Number($('#editorNumber').value) || 1);
+  const number = halfStep($('#editorNumber').value, 0.5);
+  if (number === null || number > 100) return showToast('星星数量应为 0.5 到 100，且每次增加 0.5', 'error');
   const button = $('#saveEditor');
   if (button.disabled) return;
   button.disabled = true;
@@ -1057,8 +1161,8 @@ async function reviewDiamondExchange(id, approve) {
   } catch (error) { showToast(cloudErrorMessage(error)); }
 }
 async function saveDiamondRate() {
-  const rate = Number($('#starsPerDiamond').value);
-  if (!Number.isInteger(rate) || rate < 1 || rate > 1000) return showToast('兑换比例应为 1 到 1000 颗星星');
+  const rate = halfStep($('#starsPerDiamond').value, 0.5);
+  if (rate === null || rate > 1000) return showToast('兑换比例应为 0.5 到 1000 颗星星，且每次增加 0.5');
   const button = $('#saveDiamondRate');
   button.disabled = true;
   try {
@@ -1094,14 +1198,14 @@ function renderPointLedger() {
     const currency = item.currency === 'diamond' ? '💎' : '⭐';
     const createdAt = item.createdAt || item.created_at;
     const dateText = createdAt ? new Intl.DateTimeFormat('zh-CN', { timeZone: APP_TIME_ZONE, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(createdAt)) : '刚刚';
-    return `<article class="point-ledger-item"><span class="point-ledger-item__icon">${currency}</span><div><strong>${escapeHtml(item.reason || '积分调整')}</strong><small>${dateText}</small></div><span class="point-ledger-item__delta ${item.delta > 0 ? 'is-positive' : 'is-negative'}">${item.delta > 0 ? '+' : ''}${item.delta} ${currency}</span></article>`;
+    return `<article class="point-ledger-item"><span class="point-ledger-item__icon">${currency}</span><div><strong>${escapeHtml(item.reason || '积分调整')}</strong><small>${dateText}</small></div><span class="point-ledger-item__delta ${item.delta > 0 ? 'is-positive' : 'is-negative'}">${item.delta > 0 ? '+' : ''}${pointText(item.delta)} ${currency}</span></article>`;
   }).join('') : '<div class="demo-note"><strong>暂时没有积分明细</strong><p>任务确认、奖励兑换和家长调整后会显示在这里。</p></div>';
 }
 async function saveStreakRewards() {
   const bonus3 = Number($('#streakBonus3').value);
   const bonus7 = Number($('#streakBonus7').value);
   const bonus30 = Number($('#streakBonus30').value);
-  if (![bonus3, bonus7, bonus30].every(value => Number.isInteger(value) && value >= 0 && value <= 1000)) return showToast('连续打卡奖励应为 0 到 1000 颗星星', 'error');
+  if (![bonus3, bonus7, bonus30].every(value => halfStep(value, 0) !== null && value <= 1000)) return showToast('连续打卡奖励应为 0 到 1000 颗星星，且每次增加 0.5', 'error');
   const button = $('#saveStreakRewards');
   button.disabled = true;
   try {
@@ -1118,7 +1222,7 @@ function openPointAdjustmentDialog() {
   $('#adjustPointDirection').value = 'add';
   $('#adjustPointAmount').value = 1;
   $('#adjustPointReason').value = '';
-  setAuthMessage('#pointAdjustmentMessage', '每次调整都会记录原因和时间。');
+  setAuthMessage('#pointAdjustmentMessage', '星星可按 0.5 调整；原因可留空，系统会自动标记为家长手动加/扣分。');
   showDialogAtTop($('#pointAdjustmentDialog'));
 }
 async function confirmPointAdjustment() {
@@ -1126,24 +1230,25 @@ async function confirmPointAdjustment() {
   const direction = $('#adjustPointDirection').value;
   const amount = Number($('#adjustPointAmount').value);
   const reason = $('#adjustPointReason').value.trim();
-  if (!Number.isInteger(amount) || amount < 1 || amount > 1000) return setAuthMessage('#pointAdjustmentMessage', '数量应为 1 到 1000', 'error');
-  if (!reason) return setAuthMessage('#pointAdjustmentMessage', '请填写调整原因', 'error');
-  const delta = direction === 'deduct' ? -amount : amount;
+  const normalizedAmount = currency === 'star' ? halfStep(amount, 0.5) : (Number.isInteger(amount) && amount >= 1 ? amount : null);
+  if (normalizedAmount === null || normalizedAmount > 1000) return setAuthMessage('#pointAdjustmentMessage', currency === 'star' ? '星星数量应为 0.5 到 1000，且每次增加 0.5' : '钻石数量应为 1 到 1000', 'error');
+  const delta = direction === 'deduct' ? -normalizedAmount : normalizedAmount;
+  const ledgerReason = reason || `家长手动${direction === 'add' ? '加分' : '扣分'}`;
   if (currency === 'star' && state.stars + delta < 0) return setAuthMessage('#pointAdjustmentMessage', '星星余额不足，不能扣到负数', 'error');
   if (currency === 'diamond' && state.diamonds + delta < 0) return setAuthMessage('#pointAdjustmentMessage', '钻石余额不足，不能扣到负数', 'error');
   const button = $('#confirmPointAdjustment');
   button.disabled = true;
   try {
     if (state.cloudMode) {
-      await window.KoalaCloud.adjustChildPoints(state.context.child_id, currency === 'star' ? delta : 0, currency === 'diamond' ? delta : 0, reason);
+      await window.KoalaCloud.adjustChildPoints(state.context.child_id, currency === 'star' ? delta : 0, currency === 'diamond' ? delta : 0, ledgerReason);
       await loadCloudData();
     } else {
       if (currency === 'star') state.stars += delta; else state.diamonds += delta;
-      state.pointLedger.unshift({ id: `adjust-${Date.now()}`, currency, delta, reason: `家长调整：${reason}`, createdAt: new Date().toISOString() });
+      state.pointLedger.unshift({ id: `adjust-${Date.now()}`, currency, delta, reason: `家长调整：${ledgerReason}`, createdAt: new Date().toISOString() });
       renderAll();
     }
     $('#pointAdjustmentDialog').close();
-    showToast(`已${direction === 'add' ? '增加' : '扣除'} ${amount} ${currency === 'star' ? '颗星星' : '颗钻石'}`, 'success');
+    showToast(`已${direction === 'add' ? '增加' : '扣除'} ${pointText(normalizedAmount)} ${currency === 'star' ? '颗星星' : '颗钻石'}`, 'success');
   } catch (error) { setAuthMessage('#pointAdjustmentMessage', cloudErrorMessage(error), 'error'); }
   finally { button.disabled = false; }
 }
@@ -1357,11 +1462,10 @@ function cloudErrorMessage(error) {
     ['CHILD_AUTH_REQUIRED', '请在孩子设备登录后申请兑换'],
     ['PHOTO_REQUIRED', '这个任务必须上传照片'],
     ['INSUFFICIENT_STARS', '星星不足，暂时不能兑换'],
-    ['RATE_OUT_OF_RANGE', '兑换比例应为 1 到 1000 颗星星'],
+    ['RATE_OUT_OF_RANGE', '兑换比例应为 0.5 到 1000 颗星星，且每次增加 0.5'],
     ['DIAMOND_EXCHANGE_NOT_PENDING', '这个钻石兑换申请已经处理过了'],
     ['REDEMPTION_NOT_PENDING', '这个奖励申请已经处理过了'],
-    ['STREAK_BONUS_OUT_OF_RANGE', '连续打卡奖励应为 0 到 1000 颗星星'],
-    ['ADJUSTMENT_REASON_REQUIRED', '请填写积分调整原因'],
+    ['STREAK_BONUS_OUT_OF_RANGE', '连续打卡奖励应为 0 到 1000 颗星星，且每次增加 0.5'],
     ['ADJUSTMENT_OUT_OF_RANGE', '每次最多调整 1000 个积分'],
     ['INSUFFICIENT_POINTS', '积分余额不足，不能扣到负数'],
     ['PARENT_PERMISSION_REQUIRED', '只有家长可以执行这个操作'],
@@ -1711,6 +1815,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   $('#dismissParentSyncNotice').onclick = () => { $('#parentSyncNotice').hidden = true; };
   $('#addTaskButton').onclick = () => openEditor('task');
+  $('#addSectionButton').onclick = () => openSectionEditor();
   $('#addRewardButton').onclick = () => openEditor('reward');
   $('#addLearningMaterial').onclick = () => openLearningEditor();
   $('#openAiAssistant').onclick = openAiAssistant;
@@ -1742,6 +1847,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('#saveLearningMaterial').onclick = saveLearningMaterial;
   $('#deleteLearningMaterial').onclick = deleteLearningMaterial;
+  $('#saveSection').onclick = saveSectionEditor;
+  $('#deleteSection').onclick = deleteSectionEditor;
   $('#editorSubject').onchange = () => {
     state.editingTaskMaterialIds = selectedEditorTaskMaterialIds();
     renderEditorMaterialChoices();

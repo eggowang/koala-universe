@@ -356,6 +356,31 @@
     if (!data?.id) throw new Error('TASK_UPDATE_NOT_APPLIED');
     return data.id;
   }
+  async function saveTemplateSection(section) {
+    const payload = {
+      template_id: section.templateId,
+      family_id: context.family_id,
+      name: section.name,
+      reminder_time: section.reminderTime || null,
+      sort_order: Number(section.sortOrder || 0),
+    };
+    if (section.id) {
+      const { data, error } = await requireClient().from('template_sections')
+        .update(payload).eq('id', section.id).eq('family_id', context.family_id).select('id').maybeSingle();
+      if (error) throw error;
+      if (!data?.id) throw new Error('SECTION_UPDATE_NOT_APPLIED');
+      return data.id;
+    }
+    const { data, error } = await requireClient().from('template_sections').insert(payload).select('id').single();
+    if (error) throw error;
+    if (!data?.id) throw new Error('SECTION_CREATE_NOT_APPLIED');
+    return data.id;
+  }
+  async function deleteTemplateSection(sectionId) {
+    const { error } = await requireClient().from('template_sections')
+      .delete().eq('id', sectionId).eq('family_id', context.family_id);
+    if (error) throw error;
+  }
   async function deleteTemplateTask(taskId) {
     const { data, error } = await requireClient().rpc('delete_template_task', {
       p_template_task_id: taskId,
@@ -528,7 +553,7 @@
     getContext, createFamily, acceptInvite, createChildLogin, inviteParent, loadAppData, uploadEvidence,
     submitMission, reviewMission, requestRedemption, reviewRedemption, generateAiMaterial, requestDiamondExchange, reviewDiamondExchange, saveDiamondExchangeRate, resetChildPoints,
     saveStreakRewards, adjustChildPoints, loadHistoryData,
-    publishTemplate, publishTemplateTask, saveTemplateTask, deleteTemplateTask, setTaskLearningMaterials, saveLearningMaterial, deleteLearningMaterial, saveReward, deleteReward,
+    publishTemplate, publishTemplateTask, saveTemplateTask, saveTemplateSection, deleteTemplateSection, deleteTemplateTask, setTaskLearningMaterials, saveLearningMaterial, deleteLearningMaterial, saveReward, deleteReward,
     getEvidenceUrl, enablePushNotifications, disablePushNotifications, subscribe,
   };
 })();

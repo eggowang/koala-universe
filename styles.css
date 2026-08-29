@@ -133,6 +133,7 @@ main { width: min(1120px, 100%); margin: 0 auto; padding: 24px clamp(16px, 4vw, 
 .panel-title h2 { margin-bottom: 5px; font-size: 20px; }.panel-title p { margin: 0; color: var(--muted); font-size: 13px; }
 .count-badge { padding: 6px 10px; color: #9b6b15; background: var(--amber-soft); border-radius: 99px; font-size: 12px; font-weight: 750; }
 .review-list, .manage-list { display: grid; gap: 10px; }
+.manage-list--sections { margin-bottom: 24px; }
 .review-item, .manage-item { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 15px; border: 1px solid var(--line); border-radius: 16px; }
 .manage-item__main { display: flex; align-items: center; gap: 13px; min-width: 0; }
 .manage-item__main--publish { flex: 1; padding: 0 !important; color: inherit; border: 0 !important; background: transparent !important; text-align: left; cursor: pointer; }.manage-item__main--publish > div { min-width: 0; }.manage-item__main--publish strong::after { content: ' · 点按选择日期'; color: var(--blue); font-size: 11px; font-weight: 700; }

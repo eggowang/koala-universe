@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=38">
+  <link rel="stylesheet" href="styles.css?v=39">
 </head>
 <body>
   <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
@@ -157,6 +157,8 @@
         </div>
 
         <div id="tasksPanel" class="parent-panel">
+          <div class="panel-title"><div><h2>时间段与提醒</h2><p>家长可自定义任务分组；提醒时间会用于之后新发布的任务。</p></div><button id="addSectionButton" class="secondary-button" type="button">＋ 新增时间段</button></div>
+          <div id="manageSectionList" class="manage-list manage-list--sections"></div>
           <div class="panel-title"><div><h2>默认时间段与任务</h2><p>点击任务卡片可快速选择日期发布；“编辑”用于修改模板。</p></div><button id="addTaskButton" class="secondary-button" type="button">＋ 新增任务</button></div>
           <div id="manageTaskList" class="manage-list"></div>
         </div>
@@ -181,15 +183,15 @@
           <div class="streak-settings-card">
             <div class="streak-settings-card__copy"><span class="eyebrow">连续打卡</span><h2><span aria-hidden="true">🔥</span> 已连续 <strong id="currentStreak">0</strong> 天</h2><p id="streakNextHint">完成每天安排的全部任务即可累计。</p></div>
             <div class="streak-bonus-inputs">
-              <label><span>3 天奖励</span><span><input id="streakBonus3" type="number" min="0" max="1000" value="3"><b>⭐</b></span></label>
-              <label><span>7 天奖励</span><span><input id="streakBonus7" type="number" min="0" max="1000" value="7"><b>⭐</b></span></label>
-              <label><span>30 天奖励</span><span><input id="streakBonus30" type="number" min="0" max="1000" value="30"><b>⭐</b></span></label>
+              <label><span>3 天奖励</span><span><input id="streakBonus3" type="number" min="0" max="1000" step="0.5" value="3"><b>⭐</b></span></label>
+              <label><span>7 天奖励</span><span><input id="streakBonus7" type="number" min="0" max="1000" step="0.5" value="7"><b>⭐</b></span></label>
+              <label><span>30 天奖励</span><span><input id="streakBonus30" type="number" min="0" max="1000" step="0.5" value="30"><b>⭐</b></span></label>
             </div>
             <button id="saveStreakRewards" class="secondary-button" type="button">保存打卡奖励</button>
           </div>
           <div class="points-settings-card">
             <div><span class="eyebrow">积分规则</span><h2>星星与钻石</h2><p>任务的星星数在“任务设置”中逐条修改；奖励价格在下方逐条修改。</p></div>
-            <label><span>兑换 1 颗钻石需要</span><span class="points-rate-input"><input id="starsPerDiamond" type="number" min="1" max="1000" value="10"><b>颗星星</b></span></label>
+            <label><span>兑换 1 颗钻石需要</span><span class="points-rate-input"><input id="starsPerDiamond" type="number" min="0.5" max="1000" step="0.5" value="10"><b>颗星星</b></span></label>
             <button id="saveDiamondRate" class="secondary-button" type="button">保存兑换比例</button>
           </div>
           <div class="point-reset-card">
@@ -317,7 +319,7 @@
       <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
       <span class="eyebrow" id="editorEyebrow">新增</span><h2 id="editorTitle">新增任务</h2>
       <label class="field"><span>名称</span><input id="editorName" type="text" maxlength="30"></label>
-      <label class="field"><span id="editorNumberLabel">星星数量</span><input id="editorNumber" type="number" min="1" max="100" value="2"></label>
+      <label class="field"><span id="editorNumberLabel">星星数量</span><input id="editorNumber" type="number" min="0.5" max="100" step="0.5" value="2"></label>
       <label id="editorGroupField" class="field"><span>时间段</span><select id="editorGroup"><option>早晨</option><option>放学后</option><option>锻炼</option><option>睡前</option></select></label>
       <label id="editorSubjectField" class="field"><span>任务学科</span><select id="editorSubject"><option value="">不关联学习资料</option><option>语文</option><option>数学</option><option>英语</option><option>锻炼</option></select></label>
       <section id="editorMaterialField" class="task-material-picker" hidden aria-labelledby="editorMaterialHeading">
@@ -329,6 +331,20 @@
       <div id="editorDeleteArea" class="editor-delete-area" hidden>
         <button id="deleteEditor" class="danger-button editor-delete-button" type="button">删除此项目</button>
         <p id="editorDeleteHint">已有的历史记录会保留。</p>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="sectionEditorDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="eyebrow" id="sectionEditorEyebrow">新增</span><h2 id="sectionEditorTitle">新增时间段</h2>
+      <label class="field"><span>时间段名称</span><input id="sectionName" type="text" maxlength="20" placeholder="例如：晚饭后"></label>
+      <label class="field"><span>提醒时间（选填）</span><input id="sectionReminderTime" type="time"><small class="field-help">仅影响之后发布的任务；留空则该时间段不发送定时提醒。</small></label>
+      <button id="saveSection" class="primary-button primary-button--wide" type="button">保存</button>
+      <div id="sectionDeleteArea" class="editor-delete-area" hidden>
+        <button id="deleteSection" class="danger-button editor-delete-button" type="button">删除此时间段</button>
+        <p id="sectionDeleteHint"></p>
       </div>
     </form>
   </dialog>
@@ -515,13 +531,13 @@
     <form method="dialog" class="sheet">
       <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
       <span class="sheet__icon">⚖️</span><h2>家长手动调整积分</h2>
-      <p>请选择积分类型和增减方式，并填写原因。调整记录会永久保留。</p>
+      <p>请选择积分类型和增减方式。星星支持每次 0.5 分；原因可选，调整记录会永久保留。</p>
       <div class="form-grid">
         <label><span>积分类型</span><select id="adjustPointCurrency"><option value="star">⭐ 星星</option><option value="diamond">💎 钻石</option></select></label>
         <label><span>调整方式</span><select id="adjustPointDirection"><option value="add">增加</option><option value="deduct">扣除</option></select></label>
       </div>
-      <label class="field"><span>数量</span><input id="adjustPointAmount" type="number" min="1" max="1000" value="1"></label>
-      <label class="field"><span>原因</span><input id="adjustPointReason" type="text" maxlength="80" placeholder="例如：主动帮助整理房间"></label>
+      <label class="field"><span>数量</span><input id="adjustPointAmount" type="number" min="0.5" max="1000" step="0.5" value="1"></label>
+      <label class="field"><span>原因（选填）</span><input id="adjustPointReason" type="text" maxlength="80" placeholder="例如：主动帮助整理房间"></label>
       <p id="pointAdjustmentMessage" class="auth-message" role="status"></p>
       <button id="confirmPointAdjustment" class="primary-button primary-button--wide" type="button">确认调整</button>
     </form>
@@ -530,7 +546,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastIcon" class="toast__icon" aria-hidden="true">✓</span><span id="toastMessage"></span></div>
   <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
   <script src="config.js"></script>
-  <script src="cloud.js?v=38"></script>
-  <script src="app.js?v=38" defer></script>
+  <script src="cloud.js?v=39"></script>
+  <script src="app.js?v=39" defer></script>
 </body>
 </html>
