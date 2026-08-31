@@ -126,7 +126,7 @@
       requireClient().rpc('current_star_balance', { p_child_id: ctx.child_id }),
       requireClient().rpc('current_diamond_balance', { p_child_id: ctx.child_id }),
       requireClient().from('diamond_exchanges').select('*').eq('family_id', ctx.family_id).eq('status', 'pending').order('requested_at', { ascending: false }),
-      requireClient().from('families').select('stars_per_diamond, streak_3_bonus, streak_7_bonus, streak_30_bonus').eq('id', ctx.family_id).single(),
+      requireClient().from('families').select('stars_per_diamond, streak_3_bonus, streak_7_bonus, streak_30_bonus, school_calendar').eq('id', ctx.family_id).single(),
       requireClient().from('learning_materials').select('*').eq('family_id', ctx.family_id).eq('active', true).order('sort_order'),
       requireClient().from('learning_material_task_links').select('*').eq('family_id', ctx.family_id),
       answerQuery,
@@ -177,6 +177,7 @@
         bonus30: Number(familyResult.data?.streak_30_bonus ?? 30),
       },
       currentStreak: Number(streakResult.data || 0),
+      schoolCalendar: familyResult.data?.school_calendar || { holidays: [], makeupDays: [] },
       diamondExchanges: exchangeResult.data || [],
       redemptions: redemptionResult.data || [],
       pointLedger: [
@@ -330,6 +331,13 @@
     if (error) throw error;
     return data;
   }
+  async function saveSchoolCalendar(calendar) {
+    const { error } = await requireClient().from('families').update({
+      school_calendar: calendar,
+      updated_at: new Date().toISOString(),
+    }).eq('id', context.family_id);
+    if (error) throw error;
+  }
   async function publishTemplateTask({ templateTaskId, scheduledDate, days }) {
     const { data, error } = await requireClient().rpc('publish_template_task', {
       p_template_task_id: templateTaskId,
@@ -439,6 +447,7 @@
       material_type: material.type,
       title: material.title,
       content: material.content,
+      image_url: material.imageUrl || null,
       source_label: material.source || '家长自建',
       source_url: material.url || null,
       published: material.published,
@@ -577,7 +586,7 @@
     getContext, createFamily, acceptInvite, createChildLogin, updateFamilyCode, inviteParent, loadAppData, uploadEvidence,
     submitMission, reviewMission, requestRedemption, reviewRedemption, generateAiMaterial, requestDiamondExchange, reviewDiamondExchange, saveDiamondExchangeRate, resetChildPoints,
     saveStreakRewards, adjustChildPoints, loadHistoryData,
-    publishTemplate, publishWeeklyPlan, publishTemplateTask, saveTemplateTask, saveTemplateSection, deleteTemplateSection, deleteTemplateTask, setTaskLearningMaterials, saveLearningMaterial, deleteLearningMaterial, saveReward, deleteReward,
+    publishTemplate, publishWeeklyPlan, publishTemplateTask, saveSchoolCalendar, saveTemplateTask, saveTemplateSection, deleteTemplateSection, deleteTemplateTask, setTaskLearningMaterials, saveLearningMaterial, deleteLearningMaterial, saveReward, deleteReward,
     getEvidenceUrl, enablePushNotifications, disablePushNotifications, subscribe,
   };
 })();

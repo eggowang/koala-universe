@@ -43,6 +43,7 @@ const state = {
   selectedHistoryDate: localIsoDate(),
   loadedTaskDate: localIsoDate(),
   learningMaterials: JSON.parse(localStorage.getItem('koala-demo-learning-materials') || 'null') || initialLearningMaterials,
+  schoolCalendar: JSON.parse(localStorage.getItem('koala-demo-school-calendar') || 'null') || { holidays: [], makeupDays: [] },
   learningSubject: '全部',
   learningLibraryMode: 'materials',
   editingMaterialId: null,
@@ -65,7 +66,8 @@ const state = {
   aiLastAnswer: '',
   aiLastTitle: '',
   aiLastSubject: '',
-  aiLastType: 'exercise'
+  aiLastType: 'exercise',
+  printLearningContext: null
 };
 state.learningMaterials = state.learningMaterials.map(material => ({
   ...material,
@@ -79,6 +81,32 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const defaultTaskGroups = ['早晨', '放学后', '锻炼', '睡前'];
 const groupIcons = { '早晨': '☀️', '放学后': '🛰️', '锻炼': '🏃', '睡前': '🌙' };
 const defaultSectionReminderTimes = { '早晨': '07:00', '放学后': '17:30', '锻炼': '19:00', '睡前': '21:00' };
+function normalizeSchoolCalendar(value) {
+  const input = value && typeof value === 'object' ? value : {};
+  const holidays = Array.isArray(input.holidays) ? input.holidays
+    .filter(item => /^\d{4}-\d{2}-\d{2}$/.test(item?.start || '') && /^\d{4}-\d{2}-\d{2}$/.test(item?.end || '') && item.start <= item.end)
+    .map(item => ({ id: String(item.id || crypto.randomUUID()), name: String(item.name || '假期').slice(0, 30), start: item.start, end: item.end })) : [];
+  const makeupDays = [...new Set((Array.isArray(input.makeupDays) ? input.makeupDays : []).filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date)))].sort();
+  return { holidays, makeupDays };
+}
+state.schoolCalendar = normalizeSchoolCalendar(state.schoolCalendar);
+function schoolDayType(value) {
+  const iso = typeof value === 'string' ? value : localIsoDate(value);
+  const calendar = normalizeSchoolCalendar(state.schoolCalendar);
+  if (calendar.makeupDays.includes(iso)) return 'school';
+  if (calendar.holidays.some(item => item.start <= iso && iso <= item.end)) return 'holiday';
+  const weekday = weekdayNumber(parseIsoDate(iso));
+  return weekday >= 6 ? 'weekend' : 'school';
+}
+function schoolDayLabel(value) { return ({ school: '上学', weekend: '周末', holiday: '假期' })[schoolDayType(value)] || '上学'; }
+function updateSchoolCalendarSummary() {
+  const calendar = normalizeSchoolCalendar(state.schoolCalendar);
+  const parts = ['周末自动识别'];
+  if (calendar.holidays.length) parts.push(`${calendar.holidays.length} 段假期`);
+  if (calendar.makeupDays.length) parts.push(`${calendar.makeupDays.length} 个补课日`);
+  const target = $('#schoolCalendarSummary');
+  if (target) target.textContent = parts.join(' · ');
+}
 if (!state.sections.length) {
   state.sections = defaultTaskGroups.map((name, index) => ({
     id: `demo-section-${index + 1}`,
@@ -196,8 +224,11 @@ function normalizedWeekStart(value) {
   const offset = (8 - weekdayNumber(date)) % 7;
   return localIsoDate(addDays(date, offset));
 }
-function defaultWeekdaysForTask(task) {
-  return /早|晚|睡|洗漱|整理|阅读/.test(`${task.name}${task.group}`) ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 5];
+function defaultWeeklyTaskSelection(task, date) {
+  const text = `${task.name}${task.group}`;
+  const routine = /早|晚|睡|洗漱|整理/.test(text);
+  const flexible = /阅读|锻炼|运动|跳绳|跑步|体能|热身/.test(text);
+  return schoolDayType(date) === 'school' ? true : routine || flexible;
 }
 function weeklyPlanEntries() {
   const startDate = normalizedWeekStart($('#publishStartDate').value);
@@ -228,7 +259,7 @@ function renderWeeklyPlan() {
     const head = document.createElement('div');
     head.className = 'weekly-plan-grid__head';
     const date = addDays(start, index);
-    head.textContent = `${label}\n${date.getMonth() + 1}/${date.getDate()}`;
+    head.textContent = `${label}\n${date.getMonth() + 1}/${date.getDate()}\n${schoolDayLabel(date)}`;
     grid.append(head);
   });
   getManagedTasks().forEach(task => {
@@ -240,7 +271,6 @@ function renderWeeklyPlan() {
     title.textContent = task.name;
     taskCell.append(icon, title);
     grid.append(taskCell);
-    const defaults = defaultWeekdaysForTask(task);
     WEEK_PLAN_DAYS.forEach((_, index) => {
       const cell = document.createElement('label');
       cell.className = 'weekly-plan-grid__cell';
@@ -250,7 +280,7 @@ function renderWeeklyPlan() {
       input.name = 'weekly-plan-task';
       input.dataset.taskId = task.id;
       input.dataset.weekday = String(index + 1);
-      input.checked = defaults.includes(index + 1);
+      input.checked = defaultWeeklyTaskSelection(task, addDays(start, index));
       input.addEventListener('change', updatePublishPreview);
       cell.append(input);
       grid.append(cell);
@@ -401,6 +431,7 @@ function save() {
   localStorage.setItem('koala-demo-streak-award-dates', JSON.stringify(state.streakAwardDates));
   localStorage.setItem('koala-demo-history-missions', JSON.stringify(state.historyMissions));
   localStorage.setItem('koala-demo-learning-materials', JSON.stringify(state.learningMaterials));
+  localStorage.setItem('koala-demo-school-calendar', JSON.stringify(normalizeSchoolCalendar(state.schoolCalendar)));
 }
 function statusText(task) {
   if (task.status === 'approved') return '家长已确认';
@@ -418,7 +449,6 @@ function renderTasks() {
   }).join('');
   $('#taskGroups').innerHTML = content || `<div class="today-empty-state"><span aria-hidden="true">🛰️</span><div><strong>今天还没有任务</strong><p>${escapeHtml(formatAppDateLabel(state.loadedTaskDate || localIsoDate()))}暂无已发布任务，请家长选择任务并发布到今天。</p></div></div>`;
   $$('.task-item__check').forEach(button => button.addEventListener('click', handleTaskSubmit));
-  $$('[data-open-learning]').forEach(button => button.onclick = () => openLearningViewer(button.dataset.openLearning));
   renderSummary();
 }
 function renderRewards() {
@@ -501,6 +531,47 @@ function renderLearningMaterials() {
     : '<div class="demo-note"><strong>这个学科还没有资料</strong><p>可以新增原创题目、知识卡或公开网页链接。</p></div>';
   $$('[data-edit-material]').forEach(button => button.onclick = () => openLearningEditor(button.dataset.editMaterial));
 }
+function schoolCalendarDateText(value) { return formatAppDateLabel(value).replace(' · 星期', ' · 周'); }
+function renderSchoolCalendarDialog() {
+  const calendar = normalizeSchoolCalendar(state.schoolCalendar);
+  state.schoolCalendar = calendar;
+  $('#schoolHolidayList').innerHTML = calendar.holidays.length ? calendar.holidays.map(item => `<article class="school-calendar-item"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(schoolCalendarDateText(item.start))} 至 ${escapeHtml(schoolCalendarDateText(item.end))}</small></div><button type="button" data-delete-holiday="${escapeHtml(item.id)}">删除</button></article>`).join('') : '<p class="field-help">暂未设置假期。</p>';
+  $('#schoolMakeupList').innerHTML = calendar.makeupDays.length ? calendar.makeupDays.map(date => `<article class="school-calendar-item"><div><strong>补课日</strong><small>${escapeHtml(schoolCalendarDateText(date))}</small></div><button type="button" data-delete-makeup="${escapeHtml(date)}">删除</button></article>`).join('') : '<p class="field-help">暂未设置补课日。</p>';
+  $$('[data-delete-holiday]').forEach(button => button.onclick = async () => {
+    state.schoolCalendar.holidays = state.schoolCalendar.holidays.filter(item => item.id !== button.dataset.deleteHoliday);
+    await persistSchoolCalendar('已删除假期');
+    renderSchoolCalendarDialog();
+  });
+  $$('[data-delete-makeup]').forEach(button => button.onclick = async () => {
+    state.schoolCalendar.makeupDays = state.schoolCalendar.makeupDays.filter(date => date !== button.dataset.deleteMakeup);
+    await persistSchoolCalendar('已删除补课日');
+    renderSchoolCalendarDialog();
+  });
+}
+async function persistSchoolCalendar(successMessage) {
+  state.schoolCalendar = normalizeSchoolCalendar(state.schoolCalendar);
+  setAuthMessage('#schoolCalendarMessage', '正在保存…');
+  try {
+    if (state.cloudMode) {
+      await window.KoalaCloud.saveSchoolCalendar(state.schoolCalendar);
+      await loadCloudData();
+    } else renderAll();
+    updateSchoolCalendarSummary();
+    setAuthMessage('#schoolCalendarMessage', successMessage, 'success');
+    showToast(successMessage, 'success');
+  } catch (error) { setAuthMessage('#schoolCalendarMessage', cloudErrorMessage(error), 'error'); }
+}
+function openSchoolCalendar() {
+  if (state.cloudMode && state.context?.member_role !== 'parent') return showToast('只有家长可以设置校历');
+  const today = localIsoDate();
+  $('#schoolHolidayName').value = '';
+  $('#schoolHolidayStart').value = today;
+  $('#schoolHolidayEnd').value = today;
+  $('#schoolMakeupDate').value = today;
+  setAuthMessage('#schoolCalendarMessage', '');
+  renderSchoolCalendarDialog();
+  showDialogAtTop($('#schoolCalendarDialog'));
+}
 function openLearningViewer(taskId) {
   const task = findById(state.tasks, taskId);
   if (!task) return showToast('没有找到这个任务');
@@ -508,6 +579,7 @@ function openLearningViewer(taskId) {
   if (!materials.length) return showToast('家长还没有发布学习资料');
   $('#learningViewerSubject').textContent = taskSubject(task) || '任务学习资料';
   $('#learningViewerTitle').textContent = task.name;
+  state.printLearningContext = { taskName: task.name, subject: taskSubject(task) || '学习资料', materials };
   const container = $('#learningViewerContent');
   container.replaceChildren();
   materials.forEach((material, index) => {
@@ -522,6 +594,13 @@ function openLearningViewer(taskId) {
     content.className = 'learning-viewer-card__content';
     content.textContent = material.content;
     card.append(eyebrow, title, content);
+    if (material.imageUrl) {
+      const image = document.createElement('img');
+      image.className = 'learning-viewer-card__image';
+      image.src = material.imageUrl;
+      image.alt = `${material.title}题目图片`;
+      card.append(image);
+    }
     if (material.url) {
       const link = document.createElement('a');
       link.className = 'secondary-button learning-source-link';
@@ -535,6 +614,28 @@ function openLearningViewer(taskId) {
   });
   showDialogAtTop($('#learningViewerDialog'));
 }
+function printableImageUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+  } catch { return ''; }
+}
+function printLearningSheet() {
+  const context = state.printLearningContext;
+  if (!context?.materials?.length) return showToast('没有可打印的题目');
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return showToast('浏览器拦截了打印页，请允许弹出窗口后重试', 'error');
+  const date = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'long', day: 'numeric' }).format(new Date());
+  const cards = context.materials.map((material, index) => {
+    const imageUrl = printableImageUrl(material.imageUrl);
+    const answerLines = material.type === 'exercise' ? '<div class="answer-title">我的答案：</div><div class="answer-lines"><i></i><i></i><i></i><i></i><i></i></div>' : '';
+    return `<section class="question"><div class="meta">第 ${index + 1} 题 · ${escapeHtml(materialTypeLabel(material.type))}</div><h2>${escapeHtml(material.title)}</h2><div class="content">${escapeHtml(material.content).replaceAll('\n', '<br>')}</div>${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="题目图片">` : ''}${answerLines}</section>`;
+  }).join('');
+  printWindow.document.write(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${escapeHtml(context.taskName)} - 练习题</title><style>@page{size:A4;margin:15mm}*{box-sizing:border-box}body{margin:0;color:#17223f;font-family:"Microsoft YaHei",Arial,sans-serif;font-size:15px;line-height:1.75}.header{padding-bottom:10px;border-bottom:2px solid #24396f}.header h1{margin:0;font-size:25px}.header p{margin:3px 0 0;color:#5c6680;font-size:12px}.student{display:flex;gap:32px;margin:14px 0 18px;font-size:14px}.student span{display:inline-block;min-width:140px;border-bottom:1px solid #5a6277}.question{break-inside:avoid;margin:0 0 22px;padding:15px;border:1px solid #cfd7eb;border-radius:10px}.meta{color:#4e66ba;font-size:12px;font-weight:700}.question h2{margin:4px 0 10px;font-size:19px}.content{white-space:normal}.question img{display:block;max-width:100%;max-height:145mm;margin:14px auto 0;border:1px solid #d6dceb}.answer-title{margin-top:17px;font-weight:700}.answer-lines i{display:block;height:25px;border-bottom:1px solid #9aa4bb}@media print{.question{border-color:#9ca7bd}}</style></head><body><header class="header"><h1>${escapeHtml(context.taskName)} · 练习题</h1><p>${escapeHtml(context.subject)} · ${date} · 本页仅含题目，不含答案</p></header><div class="student">姓名：<span></span> 日期：<span></span></div>${cards}</body></html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => printWindow.print(), 300);
+}
 function openLearningEditor(id = null) {
   state.editingMaterialId = id;
   const material = id ? findById(state.learningMaterials, id) : null;
@@ -544,6 +645,7 @@ function openLearningEditor(id = null) {
   $('#learningType').value = material?.type || 'exercise';
   $('#learningTitle').value = material?.title || '';
   $('#learningContent').value = material?.content || '';
+  $('#learningImageUrl').value = material?.imageUrl || '';
   $('#learningAnswer').value = material?.answer || '';
   $('#learningSource').value = material?.source || '家长自建';
   $('#learningUrl').value = material?.url || '';
@@ -723,6 +825,7 @@ function useAiResultAsMaterial() {
   $('#learningAnswer').value = state.aiLastAnswer.slice(0, 3000);
   $('#learningSource').value = 'AI 生成（家长审核）';
   $('#learningUrl').value = '';
+  $('#learningImageUrl').value = '';
   $('#learningPublished').checked = false;
   showToast(wasTruncated || answerWasTruncated ? '内容较长，已截取前 3000 字，请家长继续编辑' : '题目和答案已分开，默认仅家长可见');
 }
@@ -759,12 +862,17 @@ async function saveLearningMaterial() {
   const answer = $('#learningAnswer').value.trim();
   const type = $('#learningType').value;
   const url = $('#learningUrl').value.trim();
+  const imageUrl = $('#learningImageUrl').value.trim();
   if (!title) return showToast('请填写资料标题', 'error');
   if (!content) return showToast('请填写题目或资料内容', 'error');
   if (type === 'link' && !url) return showToast('网络资料需要填写公开网页链接', 'error');
   if (url) {
     try { const parsed = new URL(url); if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('invalid'); }
     catch { return showToast('请输入正确的 http 或 https 网页链接', 'error'); }
+  }
+  if (imageUrl) {
+    try { const parsed = new URL(imageUrl); if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('invalid'); }
+    catch { return showToast('题目图片链接需要是正确的 http 或 https 地址', 'error'); }
   }
   const material = {
     id,
@@ -773,6 +881,7 @@ async function saveLearningMaterial() {
     title,
     taskId: $('#learningTask').value || null,
     content,
+    imageUrl,
     answer,
     source: $('#learningSource').value.trim() || '家长自建',
     url,
@@ -877,7 +986,7 @@ function renderSummary() {
   $('#childExchangePending').textContent = pendingExchanges ? `已有 ${pendingExchanges} 个申请等待家长确认` : '由家长设置兑换比例，确认后才会生效';
   $('#missionSummary').textContent = `今天有 ${state.tasks.length} 个任务，完成后请爸爸妈妈确认。`;
 }
-function renderAll() { renderTasks(); renderRewards(); renderReview(); renderManageLists(); renderManageSections(); renderLearningMaterials(); renderPointLedger(); renderGrowthPanel(); save(); }
+function renderAll() { renderTasks(); renderRewards(); renderReview(); renderManageLists(); renderManageSections(); renderLearningMaterials(); renderPointLedger(); renderGrowthPanel(); updateSchoolCalendarSummary(); save(); }
 
 function handleTaskSubmit(event) {
   const task = findById(state.tasks, event.currentTarget.closest('[data-task-id]').dataset.taskId);
@@ -1625,6 +1734,7 @@ async function loadCloudData() {
   state.stars = data.stars;
   state.diamonds = data.diamonds;
   state.starsPerDiamond = data.starsPerDiamond;
+  state.schoolCalendar = normalizeSchoolCalendar(data.schoolCalendar);
   state.streakSettings = data.streakSettings;
   state.currentStreak = data.currentStreak;
   state.redemptions = data.redemptions.map(item => ({ id: item.id, rewardId: item.reward_id, rewardTitle: item.reward_title, cost: item.cost, status: item.status, requestedAt: item.requested_at }));
@@ -1645,6 +1755,7 @@ async function loadCloudData() {
       .filter(link => sameId(link.learning_material_id, material.id))
       .map(link => link.template_task_id)].filter(Boolean))],
     content: material.content,
+    imageUrl: material.image_url || '',
     answer: (data.learningAnswers || []).find(answer => sameId(answer.material_id, material.id))?.answer_content || '',
     source: material.source_label,
     url: material.source_url || '',
@@ -1728,6 +1839,13 @@ async function initializeCloudMode() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // 题目卡片会随日期和云端数据重绘；使用委托事件，避免重绘后“查看题目”失去响应。
+  $('#taskGroups').addEventListener('click', event => {
+    const button = event.target.closest('[data-open-learning]');
+    if (!button) return;
+    event.preventDefault();
+    openLearningViewer(button.dataset.openLearning);
+  });
   const today = localIsoDate();
   const date = parseIsoDate(today);
   ['pinInput', 'childLoginPin', 'setupChildPin', 'setupChildPinConfirm', 'setupParentPin', 'setupParentPinConfirm', 'newChildPin', 'newChildPinConfirm', 'newFamilyCodePin', 'newFamilyCodePinConfirm', 'newParentPin', 'newParentPinConfirm'].forEach(id => {
@@ -2046,6 +2164,24 @@ document.addEventListener('DOMContentLoaded', () => {
     setAuthMessage('#childPinResult', '孩子登录时需要同时输入家庭码和孩子 PIN。');
     $('#childPinDialog').showModal();
   };
+  $('#schoolCalendarButton').onclick = openSchoolCalendar;
+  $('#addSchoolHoliday').onclick = async () => {
+    const name = $('#schoolHolidayName').value.trim() || '假期';
+    const start = $('#schoolHolidayStart').value;
+    const end = $('#schoolHolidayEnd').value;
+    if (!start || !end || start > end) return setAuthMessage('#schoolCalendarMessage', '请正确选择假期开始和结束日期', 'error');
+    state.schoolCalendar.holidays.push({ id: crypto.randomUUID(), name, start, end });
+    await persistSchoolCalendar('假期已保存，周计划将自动调整默认勾选');
+    renderSchoolCalendarDialog();
+  };
+  $('#addSchoolMakeup').onclick = async () => {
+    const date = $('#schoolMakeupDate').value;
+    if (!date) return setAuthMessage('#schoolCalendarMessage', '请选择补课日期', 'error');
+    if (state.schoolCalendar.makeupDays.includes(date)) return setAuthMessage('#schoolCalendarMessage', '这个补课日已经添加过了', 'error');
+    state.schoolCalendar.makeupDays.push(date);
+    await persistSchoolCalendar('补课日已保存，周计划将按上学日默认安排');
+    renderSchoolCalendarDialog();
+  };
   $('#changeFamilyCodeButton').onclick = () => {
     if (!state.cloudMode || state.context?.member_role !== 'parent') return showToast('只有家长可以修改家庭码');
     $('#newFamilyCode').value = formatFamilyCode(state.context.family_code);
@@ -2096,6 +2232,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try { await navigator.clipboard.writeText(code); showToast(`家庭码 ${formatFamilyCode(code)} 已复制`); }
     catch { showToast(`家庭码：${formatFamilyCode(code)}`); }
   };
+  $('#printLearningSheet').onclick = printLearningSheet;
   $('#parentPinButton').onclick = () => openParentPinSetup(false);
   $('#saveParentPin').onclick = async () => {
     const pin = $('#newParentPin').value;

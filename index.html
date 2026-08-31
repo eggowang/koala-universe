@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=43">
+  <link rel="stylesheet" href="styles.css?v=44">
 </head>
 <body>
   <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
@@ -241,6 +241,7 @@
             <h2>家庭与设备</h2>
             <div class="setting-row"><div><strong>孩子</strong><span id="childSettingsValue">小名考拉 · 大名仅家长可见</span></div><button class="text-button" type="button">编辑</button></div>
             <div class="setting-row"><div><strong>家庭码</strong><span id="familyCodeValue" class="code-value">尚未生成</span><small>新设备可用此码和孩子 PIN 登录</small></div><div class="setting-row__actions"><button id="copyFamilyCodeButton" class="text-button" type="button">复制</button><button id="changeFamilyCodeButton" class="text-button" type="button">修改</button></div></div>
+            <div class="setting-row"><div><strong>校历与假期</strong><span id="schoolCalendarSummary">周末自动识别；可设置假期与补课日</span></div><button id="schoolCalendarButton" class="text-button" type="button">设置</button></div>
             <div class="setting-row"><div><strong>共同管理</strong><span>最多两位家长共同确认</span></div><button id="inviteParentButton" class="text-button" type="button">邀请家长</button></div>
             <div class="setting-row"><div><strong>孩子登录 PIN</strong><span>家庭码配合四位 PIN 登录孩子设备</span></div><button id="childPinButton" class="text-button" type="button">设置</button></div>
             <div class="setting-row"><div><strong>家长 PIN</strong><span id="parentPinStatus">仅保护当前设备</span></div><button id="parentPinButton" class="text-button" type="button">设置</button></div>
@@ -368,6 +369,7 @@
       <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
       <span class="eyebrow" id="learningViewerSubject">学习资料</span><h2 id="learningViewerTitle">任务学习页</h2>
       <p>以下内容由家长选择并发布，完成后返回任务页打卡。</p>
+      <button id="printLearningSheet" class="secondary-button learning-print-button" type="button">🖨️ 打印题目</button>
       <div id="learningViewerContent" class="learning-viewer-content"></div>
     </form>
   </dialog>
@@ -427,6 +429,7 @@
       <label class="field"><span>标题</span><input id="learningTitle" type="text" maxlength="60" placeholder="例如：100 以内加减法练习"></label>
       <label class="field"><span>关联任务</span><select id="learningTask"><option value="">暂不关联任务</option></select></label>
       <label class="field"><span>题目或资料内容</span><textarea id="learningContent" rows="7" maxlength="3000" placeholder="可输入题目、阅读材料、学习提示等"></textarea></label>
+      <label class="field"><span>题目图片链接（选填）</span><input id="learningImageUrl" type="url" maxlength="500" placeholder="https://.../question.png，可在打印题目时一并打印"></label>
       <label class="field answer-editor-field"><span>家长参考答案（选填）</span><textarea id="learningAnswer" rows="5" maxlength="3000" placeholder="答案、解题步骤或家长讲解，只会显示在家长答案库"></textarea><small>🔐 答案单独保存，孩子账号无法读取。</small></label>
       <div class="form-grid">
         <label><span>来源名称</span><input id="learningSource" type="text" maxlength="50" placeholder="例如：家长自建"></label>
@@ -500,6 +503,17 @@
     </form>
   </dialog>
 
+  <dialog id="schoolCalendarDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet sheet--wide">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="sheet__icon">🗓️</span><h2>校历与假期模式</h2>
+      <p>平日默认按上学日安排，周六日默认按周末安排；添加假期或补课日后，家庭周计划会自动调整默认勾选。</p>
+      <section class="school-calendar-section"><strong>假期</strong><div class="form-grid"><label><span>名称</span><input id="schoolHolidayName" type="text" maxlength="30" placeholder="例如：国庆假期"></label><label><span>开始日期</span><input id="schoolHolidayStart" type="date"></label><label><span>结束日期</span><input id="schoolHolidayEnd" type="date"></label></div><button id="addSchoolHoliday" class="secondary-button" type="button">＋ 添加假期</button><div id="schoolHolidayList" class="school-calendar-list"></div></section>
+      <section class="school-calendar-section"><strong>补课日</strong><p class="field-help">周末需要上学时添加该日期，周计划会按上学日默认安排。</p><div class="school-makeup-add"><input id="schoolMakeupDate" type="date"><button id="addSchoolMakeup" class="secondary-button" type="button">＋ 添加补课日</button></div><div id="schoolMakeupList" class="school-calendar-list"></div></section>
+      <p id="schoolCalendarMessage" class="auth-message" role="status"></p>
+    </form>
+  </dialog>
+
   <dialog id="parentPinDialog" class="sheet-dialog">
     <form method="dialog" class="sheet">
       <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
@@ -564,7 +578,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastIcon" class="toast__icon" aria-hidden="true">✓</span><span id="toastMessage"></span></div>
   <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
   <script src="config.js"></script>
-  <script src="cloud.js?v=43"></script>
-  <script src="app.js?v=43" defer></script>
+  <script src="cloud.js?v=44"></script>
+  <script src="app.js?v=44" defer></script>
 </body>
 </html>
