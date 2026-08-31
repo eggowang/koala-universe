@@ -25,6 +25,9 @@ verify_enabled = true
 [functions.create-child-login]
 verify_jwt = true
 
+[functions.update-family-code]
+verify_jwt = true
+
 [functions.invite-parent]
 verify_jwt = true
 

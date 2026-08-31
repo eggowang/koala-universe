@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="styles.css?v=40">
+  <link rel="stylesheet" href="styles.css?v=41">
 </head>
 <body>
   <div id="splash" class="splash" aria-label="正在进入考拉的宇宙任务">
@@ -51,7 +51,7 @@
         <button id="toggleRegister" class="text-button auth-switch" type="button">第一次使用？创建家长账号</button>
       </form>
       <form id="childAuthForm" class="auth-panel">
-        <label class="field"><span>家庭码</span><input id="childFamilyCode" class="family-code-input" type="text" maxlength="9" autocomplete="off" autocapitalize="characters" spellcheck="false" required placeholder="例如 AB12-CD34"></label>
+        <label class="field"><span>家庭码</span><input id="childFamilyCode" class="family-code-input" type="text" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" required placeholder="例如 K8LA-26"></label>
         <label class="field"><span>孩子 PIN</span><input id="childLoginPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" required placeholder="4 位数字"></label>
         <p id="childAuthMessage" class="auth-message" role="status"></p>
         <button class="primary-button primary-button--wide" type="submit">进入孩子任务</button>
@@ -240,7 +240,7 @@
           <div class="settings-card">
             <h2>家庭与设备</h2>
             <div class="setting-row"><div><strong>孩子</strong><span id="childSettingsValue">小名考拉 · 大名仅家长可见</span></div><button class="text-button" type="button">编辑</button></div>
-            <div class="setting-row"><div><strong>家庭码</strong><span id="familyCodeValue" class="code-value">尚未生成</span></div><button id="copyFamilyCodeButton" class="text-button" type="button">复制</button></div>
+            <div class="setting-row"><div><strong>家庭码</strong><span id="familyCodeValue" class="code-value">尚未生成</span><small>新设备可用此码和孩子 PIN 登录</small></div><div class="setting-row__actions"><button id="copyFamilyCodeButton" class="text-button" type="button">复制</button><button id="changeFamilyCodeButton" class="text-button" type="button">修改</button></div></div>
             <div class="setting-row"><div><strong>共同管理</strong><span>最多两位家长共同确认</span></div><button id="inviteParentButton" class="text-button" type="button">邀请家长</button></div>
             <div class="setting-row"><div><strong>孩子登录 PIN</strong><span>家庭码配合四位 PIN 登录孩子设备</span></div><button id="childPinButton" class="text-button" type="button">设置</button></div>
             <div class="setting-row"><div><strong>家长 PIN</strong><span id="parentPinStatus">仅保护当前设备</span></div><button id="parentPinButton" class="text-button" type="button">设置</button></div>
@@ -482,6 +482,20 @@
     </form>
   </dialog>
 
+  <dialog id="familyCodeDialog" class="sheet-dialog">
+    <form method="dialog" class="sheet">
+      <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
+      <span class="sheet__icon">🏠</span><h2>修改家庭码</h2>
+      <p>请选择 6 至 10 位易读字母或数字，例如 K8LA-26。家庭码在所有家庭中必须唯一。</p>
+      <label class="field"><span>新家庭码</span><input id="newFamilyCode" class="family-code-input" type="text" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="例如 K8LA-26"></label>
+      <label class="field"><span>当前孩子登录 PIN</span><input id="newFamilyCodePin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="当前 4 位数字"></label>
+      <label class="field"><span>确认孩子 PIN</span><input id="newFamilyCodePinConfirm" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="再次输入相同 PIN"></label>
+      <p class="field-help">为了让新家庭码立即生效，请输入当前孩子 PIN；PIN 本身不会改变。已登录的设备不会被退出，旧家庭码将不能再用于新登录。</p>
+      <p id="familyCodeResult" class="auth-message" role="status"></p>
+      <button id="saveFamilyCode" class="primary-button primary-button--wide" type="button">确认修改家庭码</button>
+    </form>
+  </dialog>
+
   <dialog id="parentPinDialog" class="sheet-dialog">
     <form method="dialog" class="sheet">
       <button class="sheet__close" value="cancel" aria-label="关闭">×</button>
@@ -546,7 +560,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastIcon" class="toast__icon" aria-hidden="true">✓</span><span id="toastMessage"></span></div>
   <div id="celebration" class="celebration" aria-hidden="true"><span>⭐</span><span>✨</span><span>⭐</span></div>
   <script src="config.js"></script>
-  <script src="cloud.js?v=40"></script>
-  <script src="app.js?v=40" defer></script>
+  <script src="cloud.js?v=41"></script>
+  <script src="app.js?v=41" defer></script>
 </body>
 </html>

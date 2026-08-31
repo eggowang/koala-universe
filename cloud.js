@@ -39,8 +39,8 @@
     return data;
   }
   async function signInChild({ familyCode, pin }) {
-    const code = familyCode.replace(/[^0-9a-f]/gi, '').toUpperCase();
-    if (!/^[0-9A-F]{8}$/.test(code)) throw new Error('FAMILY_CODE_INVALID');
+    const code = familyCode.replace(/[^a-z0-9]/gi, '').slice(0, 10).toUpperCase();
+    if (!/^[A-Z0-9]{6,10}$/.test(code)) throw new Error('FAMILY_CODE_INVALID');
     if (!/^[0-9]{4}$/.test(pin)) throw new Error('PIN_MUST_BE_FOUR_DIGITS');
     const { data: loginEmail, error: resolveError } = await requireClient().rpc('resolve_child_login', { p_family_code: code });
     if (resolveError || !loginEmail) throw resolveError || new Error('家庭码不存在或尚未设置孩子 PIN');
@@ -93,6 +93,21 @@
     if (data?.error) throw new Error(data.error);
     return data;
   }
+  async function updateFamilyCode(familyId, code, pin) {
+    const normalizedCode = String(code || '').replace(/[^a-z0-9]/gi, '').slice(0, 10).toUpperCase();
+    if (!/^[A-HJ-NP-Z2-9]{6,10}$/.test(normalizedCode)) throw new Error('FAMILY_CODE_FORMAT_INVALID');
+    if (!/^[0-9]{4}$/.test(pin)) throw new Error('PIN_MUST_BE_FOUR_DIGITS');
+    const { data, error } = await requireClient().functions.invoke('update-family-code', {
+      body: { familyId, code: normalizedCode, pin },
+    });
+    if (error) {
+      let serverMessage = '';
+      try { serverMessage = (await error.context?.json())?.error || ''; } catch { /* Preserve the standard function error below. */ }
+      throw new Error(serverMessage || error.message);
+    }
+    if (data?.error) throw new Error(data.error);
+    return data;
+  }
   async function inviteParent(familyId, email) {
     const { data, error } = await requireClient().functions.invoke('invite-parent', { body: { familyId, email } });
     if (error) throw error;
@@ -100,7 +115,7 @@
     return data;
   }
   async function loadAppData(date) {
-    const ctx = context || await getContext();
+    const ctx = await getContext();
     if (!ctx) return { context: null };
     const answerQuery = ctx.member_role === 'parent'
       ? requireClient().from('learning_answers').select('*').eq('family_id', ctx.family_id).order('updated_at', { ascending: false })
@@ -550,7 +565,7 @@
 
   window.KoalaCloud = {
     isConfigured, init, getSession, onAuthStateChange, signUpParent, signInParent, signInChild, signOut,
-    getContext, createFamily, acceptInvite, createChildLogin, inviteParent, loadAppData, uploadEvidence,
+    getContext, createFamily, acceptInvite, createChildLogin, updateFamilyCode, inviteParent, loadAppData, uploadEvidence,
     submitMission, reviewMission, requestRedemption, reviewRedemption, generateAiMaterial, requestDiamondExchange, reviewDiamondExchange, saveDiamondExchangeRate, resetChildPoints,
     saveStreakRewards, adjustChildPoints, loadHistoryData,
     publishTemplate, publishTemplateTask, saveTemplateTask, saveTemplateSection, deleteTemplateSection, deleteTemplateTask, setTaskLearningMaterials, saveLearningMaterial, deleteLearningMaterial, saveReward, deleteReward,

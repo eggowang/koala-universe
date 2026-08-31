@@ -103,11 +103,12 @@ const AI_ENDPOINT_KEY = 'koala-ai-endpoint-v1';
 const AI_MODEL_KEY = 'koala-ai-model-v1';
 const AI_API_KEY_SESSION = 'koala-ai-api-key-v1';
 
-function normalizeFamilyCode(value) { return String(value || '').replace(/[^0-9a-f]/gi, '').slice(0, 8).toUpperCase(); }
+function normalizeFamilyCode(value) { return String(value || '').replace(/[^a-z0-9]/gi, '').slice(0, 10).toUpperCase(); }
 function formatFamilyCode(value) {
   const code = normalizeFamilyCode(value);
-  return code.length > 4 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+  return code.match(/.{1,4}/g)?.join('-') || '';
 }
+function isCustomFamilyCode(code) { return /^[A-HJ-NP-Z2-9]{6,10}$/.test(code); }
 function isWeakPin(pin) {
   return /^(\d)\1{3}$/.test(pin) || ['0123', '1234', '2345', '3456', '4567', '5678', '6789', '9876', '8765', '7654', '6543', '5432', '4321', '3210'].includes(pin);
 }
@@ -1452,7 +1453,11 @@ function cloudErrorMessage(error) {
     ['EMAIL_RATE_LIMIT_EXCEEDED', '验证邮件发送次数已达上限，请稍后再试，不要重复点击'],
     ['OVER_EMAIL_SEND_RATE_LIMIT', '验证邮件发送次数已达上限，请稍后再试，不要重复点击'],
     ['INVALID_LOGIN_CREDENTIALS', '邮箱或密码不正确；孩子登录请检查家庭码和孩子 PIN'],
-    ['FAMILY_CODE_INVALID', '家庭码应为 8 位数字或字母 A-F'],
+    ['FAMILY_CODE_INVALID', '请输入 6 至 10 位家庭码'],
+    ['FAMILY_CODE_FORMAT_INVALID', '家庭码请使用 6 至 10 位易读字母或数字（不要用 0、1、I、O）'],
+    ['FAMILY_CODE_TAKEN', '这个家庭码已被使用，请换一个'],
+    ['CHILD_PIN_INCORRECT', '当前孩子 PIN 不正确，请核对后重试'],
+    ['CHILD_LOGIN_NOT_READY', '请先在家庭设置中设置孩子 PIN'],
     ['PIN_MUST_BE_FOUR_DIGITS', 'PIN 必须是四位数字'],
     ['USER_ALREADY_HAS_FAMILY', '当前账号已经加入家庭，请刷新页面继续'],
     ['USER_ALREADY_REGISTERED', '该邮箱已经注册，请返回登录'],
@@ -1628,11 +1633,12 @@ async function initializeCloudMode() {
 document.addEventListener('DOMContentLoaded', () => {
   const today = localIsoDate();
   const date = parseIsoDate(today);
-  ['pinInput', 'childLoginPin', 'setupChildPin', 'setupChildPinConfirm', 'setupParentPin', 'setupParentPinConfirm', 'newChildPin', 'newChildPinConfirm', 'newParentPin', 'newParentPinConfirm'].forEach(id => {
+  ['pinInput', 'childLoginPin', 'setupChildPin', 'setupChildPinConfirm', 'setupParentPin', 'setupParentPinConfirm', 'newChildPin', 'newChildPinConfirm', 'newFamilyCodePin', 'newFamilyCodePinConfirm', 'newParentPin', 'newParentPinConfirm'].forEach(id => {
     const input = $(`#${id}`);
     if (input) input.oninput = () => { input.value = input.value.replace(/\D/g, '').slice(0, 4); };
   });
   $('#childFamilyCode').oninput = event => { event.target.value = formatFamilyCode(event.target.value); };
+  $('#newFamilyCode').oninput = event => { event.target.value = formatFamilyCode(event.target.value); };
   state.loadedTaskDate = today;
   updateTodayLabels(today);
   $('#publishStartDate').value = today;
@@ -1705,7 +1711,7 @@ document.addEventListener('DOMContentLoaded', () => {
     event.preventDefault();
     const familyCode = normalizeFamilyCode($('#childFamilyCode').value);
     const pin = $('#childLoginPin').value;
-    if (!/^[0-9A-F]{8}$/.test(familyCode)) return setAuthMessage('#childAuthMessage', '请输入完整的 8 位家庭码', 'error');
+    if (!/^[A-Z0-9]{6,10}$/.test(familyCode)) return setAuthMessage('#childAuthMessage', '请输入 6 至 10 位家庭码', 'error');
     if (!/^[0-9]{4}$/.test(pin)) return setAuthMessage('#childAuthMessage', '请输入四位数字 PIN', 'error');
     $('#childFamilyCode').value = formatFamilyCode(familyCode);
     setAuthMessage('#childAuthMessage', '正在进入考拉任务…');
@@ -1925,6 +1931,35 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#newChildPinConfirm').value = '';
     setAuthMessage('#childPinResult', '孩子登录时需要同时输入家庭码和孩子 PIN。');
     $('#childPinDialog').showModal();
+  };
+  $('#changeFamilyCodeButton').onclick = () => {
+    if (!state.cloudMode || state.context?.member_role !== 'parent') return showToast('只有家长可以修改家庭码');
+    $('#newFamilyCode').value = formatFamilyCode(state.context.family_code);
+    $('#newFamilyCodePin').value = '';
+    $('#newFamilyCodePinConfirm').value = '';
+    setAuthMessage('#familyCodeResult', '修改后，孩子设备需用新家庭码和原来的孩子 PIN 登录。');
+    $('#familyCodeDialog').showModal();
+  };
+  $('#saveFamilyCode').onclick = async () => {
+    const code = normalizeFamilyCode($('#newFamilyCode').value);
+    const pin = $('#newFamilyCodePin').value;
+    const confirmPin = $('#newFamilyCodePinConfirm').value;
+    if (!isCustomFamilyCode(code)) return setAuthMessage('#familyCodeResult', '请输入 6 至 10 位易读字母或数字；请不要用 0、1、I、O。', 'error');
+    if (!/^[0-9]{4}$/.test(pin)) return setAuthMessage('#familyCodeResult', '请输入当前四位孩子 PIN', 'error');
+    if (pin !== confirmPin) return setAuthMessage('#familyCodeResult', '两次输入的孩子 PIN 不一致', 'error');
+    const button = $('#saveFamilyCode');
+    button.disabled = true;
+    setAuthMessage('#familyCodeResult', '正在更新家庭码…');
+    try {
+      const result = await window.KoalaCloud.updateFamilyCode(state.context.family_id, code, pin);
+      const updatedCode = normalizeFamilyCode(result.familyCode || code);
+      state.context = { ...state.context, family_code: updatedCode };
+      localStorage.setItem('koala-family-code', updatedCode);
+      $('#familyCodeValue').textContent = formatFamilyCode(updatedCode);
+      $('#familyCodeDialog').close();
+      showToast(`家庭码已更新为 ${formatFamilyCode(updatedCode)}，旧码已失效`, 'success');
+    } catch (error) { setAuthMessage('#familyCodeResult', cloudErrorMessage(error), 'error'); }
+    finally { button.disabled = false; }
   };
   $('#saveChildPin').onclick = async () => {
     const pin = $('#newChildPin').value;
