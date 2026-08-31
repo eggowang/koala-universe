@@ -189,12 +189,107 @@ function getManagedTasks() { return state.cloudMode ? state.templateTasks : stat
 function selectedPublishTaskIds() {
   return $$('input[name="publish-task"]:checked', $('#publishTaskChoices')).map(input => input.value);
 }
+const WEEK_PLAN_DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+function weekdayNumber(date) { return date.getDay() || 7; }
+function normalizedWeekStart(value) {
+  const date = parseIsoDate(value || localIsoDate());
+  const offset = (8 - weekdayNumber(date)) % 7;
+  return localIsoDate(addDays(date, offset));
+}
+function defaultWeekdaysForTask(task) {
+  return /早|晚|睡|洗漱|整理|阅读/.test(`${task.name}${task.group}`) ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 5];
+}
+function weeklyPlanEntries() {
+  const startDate = normalizedWeekStart($('#publishStartDate').value);
+  const start = parseIsoDate(startDate);
+  const weeks = Math.max(1, Math.min(8, Number($('#publishWeeks').value) || 1));
+  const byDate = new Map();
+  $$('input[name="weekly-plan-task"]:checked', $('#weeklyPlanGrid')).forEach(input => {
+    const weekday = Number(input.dataset.weekday);
+    for (let week = 0; week < weeks; week += 1) {
+      const date = localIsoDate(addDays(start, week * 7 + weekday - 1));
+      if (!byDate.has(date)) byDate.set(date, []);
+      byDate.get(date).push(input.dataset.taskId);
+    }
+  });
+  return [...byDate.entries()].map(([date, taskIds]) => ({ date, taskIds: [...new Set(taskIds)] }));
+}
+function renderWeeklyPlan() {
+  const grid = $('#weeklyPlanGrid');
+  const startValue = normalizedWeekStart($('#publishStartDate').value);
+  $('#publishStartDate').value = startValue;
+  const start = parseIsoDate(startValue);
+  grid.replaceChildren();
+  const corner = document.createElement('div');
+  corner.className = 'weekly-plan-grid__head';
+  corner.textContent = '任务 / 星期';
+  grid.append(corner);
+  WEEK_PLAN_DAYS.forEach((label, index) => {
+    const head = document.createElement('div');
+    head.className = 'weekly-plan-grid__head';
+    const date = addDays(start, index);
+    head.textContent = `${label}\n${date.getMonth() + 1}/${date.getDate()}`;
+    grid.append(head);
+  });
+  getManagedTasks().forEach(task => {
+    const taskCell = document.createElement('div');
+    taskCell.className = 'weekly-plan-grid__task';
+    const icon = document.createElement('b');
+    icon.textContent = task.icon || '🚀';
+    const title = document.createElement('span');
+    title.textContent = task.name;
+    taskCell.append(icon, title);
+    grid.append(taskCell);
+    const defaults = defaultWeekdaysForTask(task);
+    WEEK_PLAN_DAYS.forEach((_, index) => {
+      const cell = document.createElement('label');
+      cell.className = 'weekly-plan-grid__cell';
+      cell.title = `${task.name} · ${WEEK_PLAN_DAYS[index]}`;
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.name = 'weekly-plan-task';
+      input.dataset.taskId = task.id;
+      input.dataset.weekday = String(index + 1);
+      input.checked = defaults.includes(index + 1);
+      input.addEventListener('change', updatePublishPreview);
+      cell.append(input);
+      grid.append(cell);
+    });
+  });
+  if (!getManagedTasks().length) {
+    const empty = document.createElement('p');
+    empty.className = 'publish-task-empty';
+    empty.textContent = '还没有可安排的任务，请先新增任务。';
+    grid.append(empty);
+  }
+}
+function configurePublishMode() {
+  const weekly = $('#publishRange').value === '家庭周计划';
+  $('#weeklyPlanArea').hidden = !weekly;
+  $('#publishTaskPicker').hidden = weekly;
+  $('#publishDaysField').hidden = weekly;
+  $('#publishStartDateLabel').textContent = weekly ? '计划开始周一（北京时间）' : '开始日期（北京时间）';
+  $('#collisionReplaceHelp').textContent = weekly ? '只替换同一项计划任务，不影响其他任务' : '覆盖所选日期内容';
+  if (weekly) renderWeeklyPlan();
+  updatePublishPreview();
+}
 function updatePublishPreview() {
+  if ($('#publishRange').value === '家庭周计划') {
+    const entries = weeklyPlanEntries();
+    const count = entries.reduce((sum, entry) => sum + entry.taskIds.length, 0);
+    const weeks = Math.max(1, Math.min(8, Number($('#publishWeeks').value) || 1));
+    $('#publishPreviewTasks').textContent = `${count} 项安排`;
+    $('#publishPreviewDays').textContent = `${weeks} 周`;
+    $('#publishPreviewAction').textContent = '将按周生成';
+    $('#confirmPublish').disabled = count === 0;
+    return;
+  }
   const selectedCount = selectedPublishTaskIds().length;
   const totalCount = $$('input[name="publish-task"]', $('#publishTaskChoices')).length;
   const days = $('#publishRange').value === '仅一天' ? 1 : Math.max(1, Number($('#publishDays').value) || 1);
   $('#publishPreviewTasks').textContent = `${selectedCount} 条任务`;
   $('#publishPreviewDays').textContent = `${days} 天`;
+  $('#publishPreviewAction').textContent = '将连续发布';
   $('#toggleAllPublishTasks').textContent = totalCount > 0 && selectedCount === totalCount ? '取消全选' : '全选';
   $('#confirmPublish').disabled = selectedCount === 0;
 }
@@ -1476,6 +1571,8 @@ function cloudErrorMessage(error) {
     ['AI_NOT_CONFIGURED', 'AI 云端参数尚未设置，请先填写环境文件并部署'],
     ['AI_EMPTY_RESPONSE', 'AI 接口已响应，但没有返回可显示的文字'],
     ['TASK_ALREADY_EXISTS', '这个时间段已经有同名任务，请直接编辑原任务'],
+    ['WEEKLY_PLAN_INVALID', '周计划内容不正确，请重新勾选任务和日期'],
+    ['WEEKLY_PLAN_OUT_OF_RANGE', '周计划只能安排从今天起未来 8 周的任务'],
     ['TASK_CREATE_NOT_APPLIED', '任务没有写入云端，请刷新后重试'],
     ['TASK_UPDATE_NOT_APPLIED', '任务没有被修改，可能已被另一位家长删除，请刷新后重试'],
     ['TASK_DELETE_NOT_APPLIED', '任务没有从云端删除，可能已被另一位家长处理，请刷新后重试'],
@@ -1764,8 +1861,11 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   $('#publishButton').onclick = () => {
     $('#publishStartDate').value = localIsoDate();
+    $('#publishRange').value = '连续几天';
+    $('#publishWeeks').value = 1;
     setAuthMessage('#publishMessage', '');
     renderPublishTaskChoices();
+    configurePublishMode();
     showDialogAtTop($('#publishDialog'));
   };
   $$('[data-quick-date-offset]').forEach(button => button.onclick = () => {
@@ -1775,7 +1875,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('#confirmQuickPublish').onclick = confirmQuickPublish;
   $('#publishDays').oninput = updatePublishPreview;
-  $('#publishRange').onchange = updatePublishPreview;
+  $('#publishWeeks').oninput = updatePublishPreview;
+  $('#publishRange').onchange = configurePublishMode;
+  $('#publishStartDate').onchange = () => {
+    if ($('#publishRange').value === '家庭周计划') renderWeeklyPlan();
+    updatePublishPreview();
+  };
   $('#toggleAllPublishTasks').onclick = () => {
     const checkboxes = $$('input[name="publish-task"]', $('#publishTaskChoices'));
     const shouldSelectAll = !checkboxes.length || checkboxes.some(input => !input.checked);
@@ -1783,13 +1888,20 @@ document.addEventListener('DOMContentLoaded', () => {
     updatePublishPreview();
   };
   $('#confirmPublish').onclick = async () => {
+    const weekly = $('#publishRange').value === '家庭周计划';
     const days = $('#publishRange').value === '仅一天' ? 1 : Number($('#publishDays').value || 1);
     const taskIds = selectedPublishTaskIds();
-    if (!taskIds.length) return showToast('请至少选择一条任务');
-    if (!Number.isInteger(days) || days < 1 || days > 30) return showToast('连续天数应为 1 到 30 天');
+    const weeklyPlan = weekly ? weeklyPlanEntries() : [];
+    const weeklyCount = weeklyPlan.reduce((sum, entry) => sum + entry.taskIds.length, 0);
+    const weeks = Math.max(1, Math.min(8, Number($('#publishWeeks').value) || 1));
+    if (weekly && !weeklyCount) return showToast('请至少勾选一个任务和星期');
+    if (!weekly && !taskIds.length) return showToast('请至少选择一条任务');
+    if (!weekly && (!Number.isInteger(days) || days < 1 || days > 30)) return showToast('连续天数应为 1 到 30 天');
     if (!state.cloudMode) {
       $('#publishDialog').close();
-      const message = `Demo 已模拟发布 ${taskIds.length * days} 项，日期：${publishDateRangeText($('#publishStartDate').value, days)}。`;
+      const total = weekly ? weeklyCount : taskIds.length * days;
+      const period = weekly ? publishDateRangeText(normalizedWeekStart($('#publishStartDate').value), weeks * 7) : publishDateRangeText($('#publishStartDate').value, days);
+      const message = `Demo 已模拟发布 ${total} 项，日期：${period}。`;
       showParentSyncNotice(message);
       return showToast('Demo 发布成功', 'success');
     }
@@ -1802,13 +1914,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const template = state.templates[0];
       if (!template) return setAuthMessage('#publishMessage', '请先创建一个任务模板', 'error');
       const collision = $('input[name="collision"]:checked').value;
-      const startDate = $('#publishStartDate').value;
+      const startDate = weekly ? normalizedWeekStart($('#publishStartDate').value) : $('#publishStartDate').value;
       if (!startDate) return setAuthMessage('#publishMessage', '请选择开始日期', 'error');
-      const count = Number(await window.KoalaCloud.publishTemplate({ templateId: template.id, taskIds, startDate, days, collision }) || 0);
+      const count = Number(weekly
+        ? await window.KoalaCloud.publishWeeklyPlan({ templateId: template.id, plan: weeklyPlan, collision })
+        : await window.KoalaCloud.publishTemplate({ templateId: template.id, taskIds, startDate, days, collision }) || 0);
       if (!count) return setAuthMessage('#publishMessage', '没有新增任务：所选日期可能已经发布过相同任务', 'error');
       $('#publishDialog').close();
       await loadCloudData();
-      const dateRange = publishDateRangeText(startDate, days);
+      const dateRange = publishDateRangeText(startDate, weekly ? weeks * 7 : days);
       showParentSyncNotice(`已新增 ${count} 项，日期：${dateRange}。孩子端会自动同步。`);
       showToast(`发布成功：新增 ${count} 项任务`, 'success');
     } catch (error) {

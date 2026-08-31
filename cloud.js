@@ -321,6 +321,15 @@
     if (error) throw error;
     return data;
   }
+  async function publishWeeklyPlan({ templateId, plan, collision }) {
+    const { data, error } = await requireClient().rpc('publish_weekly_plan', {
+      p_template_id: templateId,
+      p_plan: plan,
+      p_collision: collision,
+    });
+    if (error) throw error;
+    return data;
+  }
   async function publishTemplateTask({ templateTaskId, scheduledDate, days }) {
     const { data, error } = await requireClient().rpc('publish_template_task', {
       p_template_task_id: templateTaskId,
@@ -568,7 +577,7 @@
     getContext, createFamily, acceptInvite, createChildLogin, updateFamilyCode, inviteParent, loadAppData, uploadEvidence,
     submitMission, reviewMission, requestRedemption, reviewRedemption, generateAiMaterial, requestDiamondExchange, reviewDiamondExchange, saveDiamondExchangeRate, resetChildPoints,
     saveStreakRewards, adjustChildPoints, loadHistoryData,
-    publishTemplate, publishTemplateTask, saveTemplateTask, saveTemplateSection, deleteTemplateSection, deleteTemplateTask, setTaskLearningMaterials, saveLearningMaterial, deleteLearningMaterial, saveReward, deleteReward,
+    publishTemplate, publishWeeklyPlan, publishTemplateTask, saveTemplateTask, saveTemplateSection, deleteTemplateSection, deleteTemplateTask, setTaskLearningMaterials, saveLearningMaterial, deleteLearningMaterial, saveReward, deleteReward,
     getEvidenceUrl, enablePushNotifications, disablePushNotifications, subscribe,
   };
 })();
