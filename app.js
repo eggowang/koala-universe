@@ -785,7 +785,6 @@ function renderAll() { renderTasks(); renderRewards(); renderReview(); renderMan
 
 function handleTaskSubmit(event) {
   const task = findById(state.tasks, event.currentTarget.closest('[data-task-id]').dataset.taskId);
-  if (state.cloudMode && state.context?.member_role !== 'child') return showToast('请在孩子设备登录后提交任务');
   if (task.status === 'approved') return showToast('这个任务已经由家长确认啦');
   if (task.status === 'submitted') return showToast('已经提交，正在等待家长确认');
   if (task.photo) {
